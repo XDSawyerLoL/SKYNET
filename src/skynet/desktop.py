@@ -12,7 +12,7 @@ from .runtime import Runtime
 class DesktopApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("SKYNET — Sovereign Local AI")
+        self.root.title("SKYNET V0.5 — Sovereign Local AI")
         self.root.geometry("1080x720")
         self.runtime = Runtime.create(Path.cwd(), session_id="desktop")
         self.events: queue.Queue[tuple[str, str]] = queue.Queue()
@@ -32,7 +32,7 @@ class DesktopApp:
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(1, weight=1)
 
-        title = ttk.Label(outer, text="SKYNET V0.3", font=("Segoe UI", 18, "bold"))
+        title = ttk.Label(outer, text="SKYNET V0.5 — Measured Evolution", font=("Segoe UI", 18, "bold"))
         title.grid(row=0, column=0, sticky="w")
         self.status = ttk.Label(outer, text="")
         self.status.grid(row=0, column=1, sticky="e")
@@ -56,7 +56,7 @@ class DesktopApp:
         self.entry.bind("<Return>", lambda _event: self._send())
         ttk.Button(input_row, text="Envoyer", command=self._send).grid(row=0, column=1, padx=(8, 0))
 
-        side = ttk.LabelFrame(outer, text="Autonomie locale", padding=8)
+        side = ttk.LabelFrame(outer, text="Autonomie locale & évolution", padding=8)
         side.grid(row=1, column=1, sticky="nsew", pady=(10, 0))
         side.rowconfigure(1, weight=1)
         side.columnconfigure(0, weight=1)
@@ -80,8 +80,9 @@ class DesktopApp:
         self.routine_prompt.grid(row=2, column=1, sticky="ew", padx=(6, 0))
         ttk.Button(form, text="Ajouter la routine", command=self._add_routine).grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         ttk.Button(form, text="Exécuter les routines dues", command=self._run_due_manual).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        ttk.Button(form, text="État évolution", command=self._show_evolution).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        self._append("SYSTEM", "SKYNET V0.3 démarré. Modèles, mémoire, routines et outils restent locaux par défaut.")
+        self._append("SYSTEM", "SKYNET V0.5 démarré. Mandats, évolution mesurée, mémoire, routines et outils restent locaux par défaut.")
 
     def _append(self, who: str, text: str) -> None:
         self.chat.configure(state="normal")
@@ -100,6 +101,15 @@ class DesktopApp:
         self.root.after(0, ask)
         done.wait()
         return bool(result["value"])
+
+    def _show_evolution(self) -> None:
+        deployed = self.runtime.deployments.get("reasoning-model")
+        deployment = "baseline" if deployed is None else f"{deployed.active} [{deployed.status}]"
+        scores = self.runtime.scores.recent(5)
+        proposals = self.runtime.trajectory_miner.proposals()
+        text = f"Deployment: {deployment}\nScorecards: {len(scores)} recent\nLearning proposals: {len(proposals)}\n"
+        text += "Use the CLI :tournament command for explicit model benchmarking and canary promotion."
+        self._append("EVOLUTION", text)
 
     def _send(self) -> None:
         if self.busy:
@@ -200,13 +210,15 @@ class DesktopApp:
 
     def _refresh_status(self) -> None:
         route = self.runtime.router.last_route.model
+        deployed = self.runtime.deployments.get("reasoning-model")
+        mode = deployed.status if deployed else "baseline"
         flags = []
         if self.busy:
             flags.append("chat")
         if self.autonomy_busy:
             flags.append("routine")
         activity = ", ".join(flags) if flags else "idle"
-        self.status.configure(text=f"{route} • {activity}")
+        self.status.configure(text=f"{route} • {mode} • {activity}")
 
     def _refresh_routines(self) -> None:
         self.routines.delete(0, "end")
