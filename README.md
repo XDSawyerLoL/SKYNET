@@ -1,35 +1,96 @@
 # SKYNET
 
-**Sovereign local-first personal AI for Windows.**
+**Sovereign local-first governed personal AI for Windows.**
 
-SKYNET owns the agent core and treats models, runtimes and connectors as replaceable components. No paid API is required for the default setup.
+SKYNET owns the agent core and treats models, runtimes, connectors and external authorization systems as replaceable adapters. No paid API is required for the default setup.
 
-Current milestone: **V0.3**
+Current milestone: **V0.4 — Sovereign Agent Fabric**
 
-## V0.3 highlights
+## V0.4 highlights
 
 - Local Ollama chat with automatic routing across configured local models.
-- Persistent SQLite memory.
-- Restart-safe autonomy checkpoints.
-- Local interval routines persisted in SQLite.
-- Unattended routines never auto-approve consequential actions.
+- Parallel bounded specialist swarms inspired by modern multi-agent systems.
+- Persistent SQLite memory plus semantic retrieval.
+- Optional local Ollama embedding model; dependency-free hashed fallback otherwise.
+- Persistent trajectory store for successful and failed agent work.
+- Restart-safe autonomy checkpoints and local interval routines.
 - Windows UI Automation before visual fallback.
 - Optional local multimodal vision through Ollama.
-- MCP stdio client and local MCP server registry.
-- Learned skills now enter a candidate state first.
-- Skill validation + explicit promotion before a skill becomes active.
-- Structured execution plans with evidence.
-- SHA-256 chained audit log.
-- Three frontends using the same runtime: CLI, Desktop and autonomy worker.
+- MCP stdio client and local MCP registry.
+- A2A-ready local agent cards and delegated task envelopes.
+- Learned skills use candidate -> validation -> explicit promotion.
+- Deterministic canonical Mandate before tool execution.
+- Independent PermissionGate remains a second enforcement layer.
+- Signed, SHA-256 hash-chained action receipts.
+- Deterministic projections for ERC-8196, AP2-style constraints and delegated OAuth scopes.
+- CLI, Desktop and autonomy worker share the same runtime.
+
+## Core execution doctrine
+
+```text
+User intent
+   ↓
+Agent reasoning / planning
+   ↓
+Action proposal
+   ↓
+Canonical SKYNET Mandate
+   ↓
+Deterministic Policy Engine
+   ↓
+Existing PermissionGate
+   ↓
+Tool / Windows / MCP execution
+   ↓
+Evidence + signed hash-chained Receipt
+```
+
+The LLM can propose an action. It cannot approve its own action.
 
 ## Sovereignty rules
 
-1. The model is replaceable.
-2. Memory, skills, plans, routines and audit data stay local by default.
+1. Models are replaceable.
+2. Memory, trajectories, skills, plans, routines, policies and receipts stay local by default.
 3. No cloud API is required for core operation.
-4. Sensitive tools remain permission-gated.
-5. Unattended execution cannot silently grant itself extra permissions.
-6. Learned procedures do not become trusted skills until validated and promoted.
+4. Every tool call crosses deterministic policy enforcement.
+5. Sensitive tools remain permission-gated independently of the policy layer.
+6. Unattended execution cannot silently grant itself extra permissions.
+7. Learned procedures do not become trusted skills until validated and promoted.
+8. External standards are adapters, never the internal source of truth.
+
+## External policy adapters
+
+SKYNET keeps one canonical local mandate and can project it toward external enforcement systems.
+
+```text
+SKYNET Mandate
+     │
+     ├── ERC-8196 projection
+     ├── AP2 constraint projection
+     ├── OAuth delegated-scope projection
+     └── future policy adapters
+```
+
+These projections do **not** make SKYNET dependent on Ethereum, AP2 or any identity provider.
+
+## Parallel swarm model
+
+The default swarm stays deliberately bounded rather than spawning dozens of agents blindly:
+
+```text
+Goal
+ ├─ planner
+ ├─ analyst
+ ├─ critic
+ ├─ security
+ └─ verifier
+      ↓
+parallel local inference
+      ↓
+evidence-preserving synthesis
+```
+
+More roles can be added, with a hard local worker cap.
 
 ## Install on Windows
 
@@ -47,119 +108,102 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ollama pull qwen3:8b
 ```
 
-### Launch the desktop app
+### Launch Desktop
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\launch.ps1
 ```
 
-Or directly:
-
-```powershell
-.\.venv\Scripts\skynet-desktop.exe
-```
-
-### Launch the terminal UI
+### Launch CLI
 
 ```powershell
 .\.venv\Scripts\skynet.exe
 ```
 
-### Launch the autonomy worker
+### Launch autonomy worker
 
 ```powershell
 .\.venv\Scripts\skynet-worker.exe
 ```
 
-The worker checks due routines at the configured polling interval. It can use read-only/SAFE tools, but confirmation-gated actions are denied while unattended and reported back as requiring user approval.
+The worker may perform read-only/SAFE work unattended. Confirmation-gated actions remain denied until the user is present.
 
-## Multi-model local routing
-
-The default setup uses one model:
-
-```text
-SKYNET_MODEL=qwen3:8b
-SKYNET_MODELS=qwen3:8b
-```
-
-You can add installed local specialists without changing the agent core, for example:
+## Multi-model routing
 
 ```text
 SKYNET_MODEL=qwen3:8b
 SKYNET_MODELS=qwen3:8b,qwen2.5-coder:7b
 ```
 
-SKYNET chooses among installed candidates and falls back to the default model if a specialist fails.
+SKYNET chooses from installed candidates and falls back to the default model if a specialist fails.
 
-## Optional local vision
+## Optional local semantic embeddings
 
-```powershell
-ollama pull qwen2.5vl:7b
-Copy-Item .env.example .env
+Without configuration, semantic memory uses a dependency-free hashed local vector fallback.
+
+For higher-quality semantic retrieval, install a local Ollama embedding model and set it in `.env`, for example:
+
+```text
+SKYNET_EMBED_MODEL=nomic-embed-text
 ```
 
-Then set:
+## Optional local vision
 
 ```text
 SKYNET_VISION_MODEL=qwen2.5vl:7b
 ```
 
-Windows accessibility inspection still works without a vision model.
+Windows accessibility inspection remains the preferred path before vision.
 
-## CLI commands
+## V0.4 governance CLI
 
 ```text
-:status
-:memory
-:skills
-:skill-candidates
-:skill-validate <name>
-:skill-promote <name>
-:routines
-:routine-add
-:routine-run
-:checkpoints
-:mcp
-:windows
-:quit
+:identity
+:policy
+:policy-erc8196
+:policy-ap2
+:policy-oauth
+:receipts
+:verify-receipts
+:semantic <query>
+:trajectories
+:agents
+:swarm <goal>
 ```
 
-## Learned skill lifecycle
+Existing memory, skill, routine, checkpoint, MCP and Windows commands remain available.
+
+## Learned knowledge lifecycle
 
 ```text
-successful procedure
-      ↓
+successful or failed trajectory
+          ↓
+local evidence store
+          ↓
+repeatable procedure identified
+          ↓
 skill candidate
-      ↓
-static quality/safety validation
-      ↓
-explicit user-approved promotion
-      ↓
+          ↓
+validation
+          ↓
+explicit promotion
+          ↓
 approved reusable skill
 ```
 
-A skill is documentation/procedure. It does not rewrite the SKYNET core.
+V0.4 records trajectories but does not silently fine-tune itself. Future model adaptation must remain separately evaluated, versioned and rollback-capable.
 
-## Autonomy model
+## Interoperability direction
 
-```text
-routine due
-   ↓
-checkpoint: running
-   ↓
-agent executes local SAFE/read-only work
-   ↓
-consequential tool requested?
-   ├─ no  → continue + verify
-   └─ yes → deny unattended action + report approval needed
-   ↓
-checkpoint: ok / needs_user / failed
-   ↓
-next run scheduled
-```
+- **MCP**: agent-to-tool integration.
+- **A2A**: future agent-to-agent interoperability.
+- **AP2 / ERC-8196 / OAuth-style delegation**: external policy enforcement adapters.
+- **x402 and future payment rails**: optional execution adapters behind the same canonical mandate boundary.
+
+SKYNET's internal identity, memory and policy model remain stable even if any external protocol changes.
 
 ## Data
 
 Runtime state lives under `.skynet/` by default and is ignored by Git. The workspace is `workspace/` by default.
 
-See `docs/V0.3.md` for the architecture and milestone details.
+See `docs/V0.4.md` for the architecture and forward roadmap.
