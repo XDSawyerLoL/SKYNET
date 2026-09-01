@@ -83,6 +83,9 @@ class Runtime:
         plans = PlanStore(config.data_dir / "plans")
         permissions = PermissionGate()
         router = ModelRouter(config.ollama_url, config.model, config.models)
+        deployed_model = deployments.get("reasoning-model")
+        if deployed_model is not None:
+            router.configure_deployment(deployed_model.active, deployed_model.status)
         tournament = ModelTournament(router, eval_suite, scores, max_workers=min(config.swarm_workers, 3))
         swarm = SwarmEngine(router, config.swarm_workers)
         agents = AgentRegistry(config.data_dir / "agents.json")
@@ -92,6 +95,7 @@ class Runtime:
             capabilities=[
                 "planning", "memory", "windows", "mcp", "swarm", "policy-enforcement",
                 "trajectory-learning", "objective-evaluation", "capability-delegation",
+                "canary-promotion", "rollback",
             ],
             protocols=["skynet-local", "mcp-client", "a2a-ready"],
             trust="owner-local",
