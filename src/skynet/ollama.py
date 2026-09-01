@@ -62,6 +62,14 @@ class OllamaClient:
         suffix = f": {detail}" if detail else ""
         raise OllamaError(f"Ollama HTTP {exc.code} at {url}{suffix}") from exc
 
+    def warm(self) -> None:
+        """Load the model into Ollama without generating user-visible text."""
+        self._json(
+            "POST",
+            "/api/generate",
+            {"model": self.model, "prompt": "", "stream": False, "keep_alive": self.keep_alive},
+        )
+
     def chat(
         self,
         messages: list[dict],
@@ -94,12 +102,7 @@ class OllamaClient:
         think: bool = False,
         num_predict: int = 768,
     ) -> Iterator[str]:
-        """Yield visible text as Ollama generates it.
-
-        This path intentionally exposes no tools. It is used for ordinary
-        conversation where low time-to-first-token matters more than agentic
-        orchestration. Tool-bearing requests stay on the governed Agent loop.
-        """
+        """Yield visible text as Ollama generates it."""
 
         payload = {
             "model": self.model,
