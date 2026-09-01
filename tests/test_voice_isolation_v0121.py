@@ -28,18 +28,26 @@ class VoiceIsolationV0121Tests(unittest.TestCase):
         self.assertTrue(all(len(chunk) <= 80 for chunk in chunks))
         self.assertTrue(chunks[0].endswith("."))
 
-    def test_premium_detection_requires_isolated_venv_not_core_imports(self) -> None:
+    def test_premium_detection_requires_isolated_venv_and_female_reference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             data = Path(tmp) / ".skynet"
             voice = data / "voice"
             python = voice / "venv" / "Scripts" / "python.exe"
             python.parent.mkdir(parents=True, exist_ok=True)
             python.write_bytes(b"")
-            (voice / "chatterbox.enabled").write_text("enabled", encoding="ascii")
+            (voice / "chatterbox.enabled").write_text("female-reference-validated", encoding="ascii")
+
             engine = VoiceEngine(data)
             try:
-                self.assertEqual(engine.status().provider, "Chatterbox Multilingual V3")
+                self.assertNotEqual(engine.status().provider, "Chatterbox Multilingual V3")
+                self.assertFalse(engine.diagnostics()["female_reference_valid"])
+
+                (voice / "reference.wav").write_bytes(b"R" * 25000)
+                status = engine.refresh()
+                self.assertEqual(status.provider, "Chatterbox Multilingual V3")
+                self.assertIn("féminine", status.voice)
                 self.assertTrue(engine.diagnostics()["premium_python_exists"])
+                self.assertTrue(engine.diagnostics()["female_reference_valid"])
             finally:
                 engine.close()
 
