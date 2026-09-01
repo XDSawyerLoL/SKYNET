@@ -86,13 +86,13 @@ class GovernedToolBus:
             return 35
         if name == "dev_run_tests":
             return 50
-        if name in {"powershell", "mcp_call"}:
+        if name in {"powershell", "mcp_call"} or name.startswith("mcp__"):
             return 60
         return 75
 
     @staticmethod
     def _reversible(name: str) -> bool:
-        return name not in {"powershell", "mcp_call"}
+        return name not in {"powershell", "mcp_call"} and not name.startswith("mcp__")
 
     def execute(self, name: str, args: dict[str, Any], confirmer: Callable[[str], bool]) -> str:
         mandate = self.mandates.load()
