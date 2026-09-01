@@ -38,7 +38,6 @@ from .voice import VoiceEngine
 BG = "#0b0f14"
 SURFACE = "#111821"
 SURFACE_2 = "#151e28"
-SURFACE_3 = "#1b2632"
 BORDER = "#253445"
 TEXT = "#eef5fb"
 MUTED = "#8da1b4"
@@ -46,7 +45,6 @@ FAINT = "#5d7286"
 ACCENT = "#4cc9f0"
 ACCENT_2 = "#7ae3ff"
 GREEN = "#54d6a1"
-AMBER = "#f2be63"
 RED = "#ff6f7d"
 
 
@@ -61,7 +59,7 @@ QFrame#card {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius:
 QFrame#cardSoft {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 16px; }}
 QFrame#hero {{ background: #101923; border: 1px solid #29465c; border-radius: 24px; }}
 QLabel#eyebrow {{ color: {ACCENT}; font-size: 11px; font-weight: 700; letter-spacing: 1px; }}
-QLabel#title {{ color: {TEXT}; font-size: 28px; font-weight: 700; }}
+QLabel#title {{ color: {TEXT}; font-size: 29px; font-weight: 700; }}
 QLabel#subtitle {{ color: {MUTED}; font-size: 13px; }}
 QLabel#metric {{ color: {TEXT}; font-size: 24px; font-weight: 650; }}
 QLabel#metricLabel {{ color: {MUTED}; font-size: 11px; }}
@@ -109,10 +107,9 @@ class CoreOrb(QWidget):
         self.mode = "idle"
         self.setMinimumSize(230, 230)
         self.setMaximumSize(300, 300)
-        timer = QTimer(self)
-        timer.timeout.connect(self._tick)
-        timer.start(45)
-        self._timer = timer
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(45)
 
     def set_mode(self, mode: str) -> None:
         self.mode = mode
@@ -123,10 +120,12 @@ class CoreOrb(QWidget):
         self.update()
 
     def paintEvent(self, _event) -> None:
+        import math
+
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
-        c_x, c_y = w / 2, h / 2
+        cx, cy = w / 2, h / 2
         size = min(w, h)
         accent = QColor(RED if self.mode == "stopped" else ACCENT)
         soft = QColor(44, 91, 119, 180)
@@ -136,24 +135,22 @@ class CoreOrb(QWidget):
             color = QColor(accent)
             color.setAlpha(alpha)
             p.setPen(QPen(color, width))
-            p.drawEllipse(int(c_x-r), int(c_y-r), int(2*r), int(2*r))
+            p.drawEllipse(int(cx-r), int(cy-r), int(2*r), int(2*r))
 
         p.setPen(QPen(soft, 5))
         r = size * 0.39
-        start = int((90 - self.phase) * 16)
-        p.drawArc(int(c_x-r), int(c_y-r), int(2*r), int(2*r), start, int(88 * 16))
+        p.drawArc(int(cx-r), int(cy-r), int(2*r), int(2*r), int((90-self.phase)*16), int(88*16))
         p.setPen(QPen(accent, 2))
         r2 = size * 0.31
-        p.drawArc(int(c_x-r2), int(c_y-r2), int(2*r2), int(2*r2), int((self.phase+30)*16), int(130*16))
+        p.drawArc(int(cx-r2), int(cy-r2), int(2*r2), int(2*r2), int((self.phase+30)*16), int(130*16))
 
-        p.setBrush(QColor(ACCENT if self.mode != "stopped" else RED))
+        p.setBrush(accent)
         p.setPen(Qt.NoPen)
         for i in range(6):
-            import math
-            angle = (self.phase * (1 if i % 2 == 0 else -0.55) + i * 60) * 3.14159265 / 180
+            angle = (self.phase * (1 if i % 2 == 0 else -0.55) + i * 60) * math.pi / 180
             radius = size * (0.40 if i % 2 == 0 else 0.33)
-            x = c_x + math.cos(angle) * radius
-            y = c_y + math.sin(angle) * radius
+            x = cx + math.cos(angle) * radius
+            y = cy + math.sin(angle) * radius
             p.drawEllipse(int(x-3), int(y-3), 6, 6)
 
         p.setPen(QColor(TEXT))
@@ -163,7 +160,8 @@ class CoreOrb(QWidget):
         p.setPen(QColor(GREEN if self.mode != "stopped" else RED))
         font.setPointSize(max(8, int(size * 0.034)))
         p.setFont(font)
-        p.drawText(0, int(c_y + size*0.11), w, 30, Qt.AlignHCenter, "● ONLINE" if self.mode != "stopped" else "● SAFE MODE")
+        label = "● EN LIGNE" if self.mode != "stopped" else "● MODE SÛR"
+        p.drawText(0, int(cy + size*0.11), w, 30, Qt.AlignHCenter, label)
 
 
 class Card(QFrame):
@@ -182,8 +180,6 @@ class Card(QFrame):
 class DataPage(QWidget):
     def __init__(self, title: str, subtitle: str, parent=None) -> None:
         super().__init__(parent)
-        self.title_text = title
-        self.subtitle_text = subtitle
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 26, 28, 26)
         layout.setSpacing(18)
@@ -209,14 +205,14 @@ class CommandPalette(QDialog):
     def __init__(self, actions: list[tuple[str, str, Callable[[], None]]], parent=None) -> None:
         super().__init__(parent)
         self.actions = actions
-        self.setWindowTitle("Command Palette")
+        self.setWindowTitle("Palette de commandes")
         self.setModal(True)
         self.resize(620, 440)
         self.setStyleSheet(APP_STYLE)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Type a capability, page or command…")
+        self.search.setPlaceholderText("Rechercher une capacité, une page ou une commande…")
         self.list = QListWidget()
         layout.addWidget(self.search)
         layout.addWidget(self.list, 1)
@@ -230,8 +226,7 @@ class CommandPalette(QDialog):
         query = self.search.text().casefold().strip()
         self.list.clear()
         for index, (label, detail, _callback) in enumerate(self.actions):
-            hay = f"{label} {detail}".casefold()
-            if query and query not in hay:
+            if query and query not in f"{label} {detail}".casefold():
                 continue
             item = QListWidgetItem(f"{label}\n{detail}")
             item.setData(Qt.UserRole, index)
@@ -252,7 +247,7 @@ class CommandPalette(QDialog):
 class SkynetWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("SKYNET — Sovereign AI")
+        self.setWindowTitle("SKYNET — Intelligence souveraine")
         self.resize(1540, 940)
         self.setMinimumSize(1120, 720)
         self.runtime = Runtime.create(Path.cwd(), session_id="desktop")
@@ -264,23 +259,23 @@ class SkynetWindow(QMainWindow):
         self.nav: dict[str, QPushButton] = {}
         self.pages: dict[str, QWidget] = {}
         self.trace_lines: list[str] = []
-        self.started_at = time.perf_counter()
 
         self.setStyleSheet(APP_STYLE)
         self._connect_bridge()
         self._build()
         self._install_shortcuts()
         self.navigate("home")
-        self._trace("Core", "Sovereign runtime ready")
-        self._trace("Governance", "Mandate · Policy · Permission · Receipt active")
-        self._trace("Model", self.runtime.router.last_route.model)
+        self._trace("Noyau", "Runtime souverain chargé")
+        self._trace("Mémoire", "Contexte persistant connecté")
+        self._trace("Sécurité", "Mandat · politique · permission · reçu actifs")
+        self._trace("Modèle", self.runtime.router.last_route.model)
 
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self._refresh_dynamic)
         self.refresh_timer.start(2500)
         self._refresh_dynamic()
+        QTimer.singleShot(900, self._announce_startup)
 
-    # --------------------------------------------------------------- structure
     def _build(self) -> None:
         root = QWidget()
         root_layout = QHBoxLayout(root)
@@ -301,14 +296,14 @@ class SkynetWindow(QMainWindow):
         self.pages["home"] = self._build_home()
         self.pages["chat"] = self._build_chat()
         for key, title, subtitle in (
-            ("memory", "Memory", "Persistent context, session continuity and what SKYNET has learned."),
-            ("skills", "Skills", "Reusable procedures that reduce repeated work and turn successful workflows into capabilities."),
-            ("automations", "Automations", "Long-running routines, scheduled actions and session-bound autonomous work."),
-            ("browser", "Browser", "Local browser harness, research, evidence extraction and governed interaction."),
-            ("integrations", "Integrations", "MCP tools, built-in adapters and external capability bridges."),
-            ("devices", "Devices", "Windows control, hardware resources, UI Automation, screenshots and vision fallback."),
-            ("sessions", "Sessions", "Search, fork and resume durable conversations and projects."),
-            ("system", "System & Security", "Identity, policy, permissions, receipts, risk and the global kill switch."),
+            ("memory", "Mémoire", "Contexte persistant, continuité des sessions et connaissances retenues par SKYNET."),
+            ("skills", "Compétences", "Procédures réutilisables qui transforment les réussites répétées en capacités fiables."),
+            ("automations", "Automatisations", "Routines, actions planifiées et travail autonome lié au bon contexte."),
+            ("browser", "Recherche", "Navigation locale, collecte de preuves, extraction et interaction gouvernée."),
+            ("integrations", "Intégrations", "Outils MCP, adaptateurs internes et ponts de capacités externes."),
+            ("devices", "Appareils", "Contrôle Windows, ressources matérielles, UI Automation, captures et vision."),
+            ("sessions", "Sessions", "Rechercher, reprendre et bifurquer des conversations et projets durables."),
+            ("system", "Système & sécurité", "Identité, politiques, permissions, reçus, risque et arrêt global."),
         ):
             self.pages[key] = DataPage(title, subtitle)
         for page in self.pages.values():
@@ -325,22 +320,22 @@ class SkynetWindow(QMainWindow):
         brand = QLabel("◉  SKYNET")
         brand.setStyleSheet(f"font-size: 20px; font-weight: 750; color: {TEXT}; padding: 4px 8px;")
         layout.addWidget(brand)
-        sub = QLabel("SOVEREIGN AI")
+        sub = QLabel("IA SOUVERAINE")
         sub.setObjectName("eyebrow")
         sub.setStyleSheet(f"color: {ACCENT}; padding: 0 9px 18px 9px;")
         layout.addWidget(sub)
 
         items = (
-            ("home", "⌂", "Overview"),
-            ("chat", "◫", "Mission Control"),
-            ("memory", "◇", "Memory"),
-            ("skills", "✦", "Skills"),
-            ("automations", "◴", "Automations"),
-            ("browser", "◎", "Research"),
-            ("integrations", "⌘", "Integrations"),
-            ("devices", "▱", "Devices"),
+            ("home", "⌂", "Vue d’ensemble"),
+            ("chat", "◫", "Centre de mission"),
+            ("memory", "◇", "Mémoire"),
+            ("skills", "✦", "Compétences"),
+            ("automations", "◴", "Automatisations"),
+            ("browser", "◎", "Recherche"),
+            ("integrations", "⌘", "Intégrations"),
+            ("devices", "▱", "Appareils"),
             ("sessions", "☷", "Sessions"),
-            ("system", "⚙", "System"),
+            ("system", "⚙", "Système"),
         )
         for key, icon, label in items:
             button = QPushButton(f"{icon}   {label}")
@@ -354,7 +349,7 @@ class SkynetWindow(QMainWindow):
         self.side_voice.setObjectName("subtitle")
         self.side_voice.setWordWrap(True)
         layout.addWidget(self.side_voice)
-        local = QLabel("● LOCAL · SOVEREIGN")
+        local = QLabel("● LOCAL · SOUVERAIN")
         local.setObjectName("statusGood")
         layout.addWidget(local)
         return side
@@ -365,18 +360,18 @@ class SkynetWindow(QMainWindow):
         bar.setStyleSheet(f"background: {BG}; border-bottom: 1px solid {BORDER};")
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(28, 12, 24, 12)
-        self.breadcrumb = QLabel("SKYNET / OVERVIEW")
+        self.breadcrumb = QLabel("SKYNET / VUE D’ENSEMBLE")
         self.breadcrumb.setObjectName("eyebrow")
         layout.addWidget(self.breadcrumb)
         layout.addStretch(1)
-        self.status_label = QLabel("● SYSTEMS NOMINAL")
+        self.status_label = QLabel("● SYSTÈMES OPÉRATIONNELS")
         self.status_label.setObjectName("statusGood")
         layout.addWidget(self.status_label)
-        model = QLabel(f"LOCAL MODEL  ·  {self.runtime.router.last_route.model}")
+        model = QLabel(f"MODÈLE LOCAL · {self.runtime.router.last_route.model}")
         model.setObjectName("subtitle")
         model.setStyleSheet(f"background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 11px; padding: 8px 12px;")
         layout.addWidget(model)
-        voice = QPushButton("◉ Voice")
+        voice = QPushButton("◉ Voix")
         voice.setObjectName("secondary")
         voice.clicked.connect(self._toggle_voice)
         layout.addWidget(voice)
@@ -386,7 +381,6 @@ class SkynetWindow(QMainWindow):
         layout.addWidget(palette)
         return bar
 
-    # ------------------------------------------------------------------- home
     def _build_home(self) -> QWidget:
         outer = QScrollArea()
         outer.setWidgetResizable(True)
@@ -404,26 +398,26 @@ class SkynetWindow(QMainWindow):
         hero_layout.addWidget(self.orb)
 
         copy = QVBoxLayout()
-        eyebrow = QLabel("SOVEREIGN COMMAND LAYER")
+        eyebrow = QLabel("COUCHE DE COMMANDE SOUVERAINE")
         eyebrow.setObjectName("eyebrow")
         copy.addWidget(eyebrow)
-        title = QLabel("Ask once. Let SKYNET operate.")
+        title = QLabel("Donnez l’objectif. SKYNET s’occupe du reste.")
         title.setObjectName("title")
         copy.addWidget(title)
         intro = QLabel(
-            "SKYNET is not just a chatbot. It can reason, use governed tools, work across Windows, browse, "
-            "remember context, automate routines and coordinate specialist agents — while every consequential action remains auditable."
+            "SKYNET n’est pas un simple chatbot. Il peut raisonner, utiliser des outils gouvernés, agir sur Windows, "
+            "naviguer, mémoriser, automatiser et coordonner plusieurs spécialistes tout en laissant une trace vérifiable."
         )
         intro.setWordWrap(True)
         intro.setObjectName("subtitle")
         intro.setMaximumWidth(760)
         copy.addWidget(intro)
         actions = QHBoxLayout()
-        mission = QPushButton("Start a mission")
+        mission = QPushButton("Démarrer une mission")
         mission.setObjectName("primary")
-        mission.clicked.connect(lambda: self._start_prompt("Je veux te confier une mission. Commence par clarifier l’objectif, puis construis et exécute un plan vérifiable."))
+        mission.clicked.connect(lambda: self._start_prompt("Je veux te confier une mission. Clarifie l’objectif, construis un plan, exécute-le avec les outils disponibles et vérifie le résultat."))
         actions.addWidget(mission)
-        capabilities = QPushButton("What can you do?")
+        capabilities = QPushButton("Que peux-tu faire ?")
         capabilities.setObjectName("secondary")
         capabilities.clicked.connect(lambda: self._start_prompt("Montre-moi concrètement ce que tu peux faire sur ce PC, avec des exemples d’actions réellement disponibles et leurs niveaux d’autorisation."))
         actions.addWidget(capabilities)
@@ -433,25 +427,24 @@ class SkynetWindow(QMainWindow):
         root.addWidget(hero)
 
         stats = QHBoxLayout()
-        self.metric_tools = self._metric_card("TOOLS", "—", "governed capabilities")
-        self.metric_integrations = self._metric_card("INTEGRATIONS", "—", "active bridges")
-        self.metric_sessions = self._metric_card("SESSIONS", "—", "durable contexts")
-        self.metric_skills = self._metric_card("SKILLS", "—", "approved procedures")
+        self.metric_tools = self._metric_card("OUTILS", "—", "capacités gouvernées")
+        self.metric_integrations = self._metric_card("INTÉGRATIONS", "—", "ponts actifs")
+        self.metric_sessions = self._metric_card("SESSIONS", "—", "contextes durables")
+        self.metric_skills = self._metric_card("COMPÉTENCES", "—", "procédures approuvées")
         for card in (self.metric_tools, self.metric_integrations, self.metric_sessions, self.metric_skills):
             stats.addWidget(card)
         root.addLayout(stats)
 
-        section = QLabel("What SKYNET can actually do")
+        section = QLabel("Ce que SKYNET peut réellement faire")
         section.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {TEXT}; padding-top: 6px;")
         root.addWidget(section)
-        grid_rows = QVBoxLayout()
         capabilities_data = (
-            ("▱  Operate Windows", "Inspect UI Automation, focus apps, type, click, take screenshots and use vision fallback.", "Ouvre le mode Mission Control et aide-moi à piloter Windows de façon vérifiable."),
-            ("◎  Research & browse", "Navigate the web, collect evidence, compare sources and keep a trace of what was used.", "Lance une recherche web approfondie sur un sujet que je vais te donner, avec preuves et vérification."),
-            ("</>  Files & code", "Read/write workspace files, inspect Git, search source code, run tests and use PowerShell under policy.", "Analyse ce projet, trouve les problèmes prioritaires et propose un plan de correction vérifiable."),
-            ("◴  Automate", "Create routines, bind them to sessions, run unattended work within permission and risk limits.", "Aide-moi à créer une automatisation utile sur ce PC et explique exactement ce qu’elle fera."),
-            ("◇  Remember", "Persistent memory, semantic recall, searchable sessions, forks and project continuity.", "Montre ce que tu sais retenir, retrouver et réutiliser d’une session à l’autre."),
-            ("✦  Multi-agent", "Planner, researcher, analyst, coder, critic, security and verifier roles coordinated as a DAG.", "Utilise le swarm pour analyser un problème complexe et montre la valeur ajoutée des spécialistes."),
+            ("▱  Piloter Windows", "Inspecter l’interface, cibler une application, saisir, cliquer, capturer l’écran et utiliser la vision en secours.", "Aide-moi à piloter Windows de façon vérifiable et sans risque inutile."),
+            ("◎  Rechercher sur le web", "Naviguer, collecter des preuves, comparer des sources et conserver la trace de ce qui a été utilisé.", "Lance une recherche approfondie sur un sujet que je vais te donner, avec preuves et vérification."),
+            ("</>  Fichiers & code", "Lire et écrire dans l’espace de travail, inspecter Git, rechercher dans le code, lancer des tests et utiliser PowerShell sous contrôle.", "Analyse ce projet, trouve les problèmes prioritaires et propose un plan de correction vérifiable."),
+            ("◴  Automatiser", "Créer des routines, les rattacher à une session et travailler de manière autonome dans les limites de risque définies.", "Aide-moi à créer une automatisation utile sur ce PC et explique exactement ce qu’elle fera."),
+            ("◇  Se souvenir", "Mémoire persistante, rappel sémantique, recherche de sessions, bifurcations et continuité des projets.", "Montre ce que tu sais retenir, retrouver et réutiliser d’une session à l’autre."),
+            ("✦  Mobiliser plusieurs agents", "Planificateur, chercheur, analyste, codeur, critique, sécurité et vérificateur coordonnés.", "Utilise le swarm pour analyser un problème complexe et montre la valeur ajoutée des spécialistes."),
         )
         for row_start in range(0, len(capabilities_data), 3):
             row = QHBoxLayout()
@@ -467,23 +460,22 @@ class SkynetWindow(QMainWindow):
                 detail_label.setObjectName("subtitle")
                 card.box.addWidget(detail_label)
                 row.addWidget(card, 1)
-            grid_rows.addLayout(row)
-        root.addLayout(grid_rows)
+            root.addLayout(row)
 
         lower = QHBoxLayout()
         lower.setSpacing(14)
-        activity = Card("Live activity")
+        activity = Card("Activité en direct")
         self.home_trace = QTextBrowser()
         self.home_trace.setFrameShape(QFrame.NoFrame)
         self.home_trace.setMaximumHeight(190)
         activity.box.addWidget(self.home_trace)
         lower.addWidget(activity, 2)
-        system = Card("System posture")
+        system = Card("État du système")
         self.home_system = QLabel()
         self.home_system.setWordWrap(True)
         self.home_system.setObjectName("subtitle")
         system.box.addWidget(self.home_system)
-        open_system = QPushButton("Open security & system")
+        open_system = QPushButton("Ouvrir sécurité & système")
         open_system.setObjectName("secondary")
         open_system.clicked.connect(lambda: self.navigate("system"))
         system.box.addWidget(open_system)
@@ -507,53 +499,51 @@ class SkynetWindow(QMainWindow):
         card.value_widget = value_widget  # type: ignore[attr-defined]
         return card
 
-    # ------------------------------------------------------------------- chat
     def _build_chat(self) -> QWidget:
         host = QWidget()
         root = QHBoxLayout(host)
         root.setContentsMargins(28, 24, 28, 26)
         root.setSpacing(14)
 
-        conversation = Card("Mission control")
-        conv_box = conversation.box
+        conversation = Card("Centre de mission")
         self.chat = QTextBrowser()
         self.chat.setFrameShape(QFrame.NoFrame)
-        self.chat.setStyleSheet(f"QTextBrowser {{ background: transparent; border: 0; padding: 6px; }}")
-        conv_box.addWidget(self.chat, 1)
+        self.chat.setStyleSheet("QTextBrowser { background: transparent; border: 0; padding: 6px; }")
+        conversation.box.addWidget(self.chat, 1)
         composer = QHBoxLayout()
         self.entry = QTextEdit()
-        self.entry.setPlaceholderText("Give SKYNET an objective…  Ctrl+Enter to send")
+        self.entry.setPlaceholderText("Donnez un objectif à SKYNET…  Ctrl+Entrée pour envoyer")
         self.entry.setFixedHeight(86)
         composer.addWidget(self.entry, 1)
-        send = QPushButton("Send  ↗")
+        send = QPushButton("Envoyer  ↗")
         send.setObjectName("primary")
         send.setFixedWidth(116)
         send.clicked.connect(self.send_message)
         composer.addWidget(send)
-        conv_box.addLayout(composer)
+        conversation.box.addLayout(composer)
         quick = QHBoxLayout()
         for label, prompt in (
-            ("Plan", "Transforme mon objectif en plan d’exécution avec critères de réussite."),
-            ("Deep research", "Passe en recherche approfondie et construis une réponse vérifiée avec sources."),
-            ("Use swarm", "Utilise plusieurs spécialistes pour traiter ce problème et synthétise leurs conclusions."),
-            ("Inspect PC", "Fais un état des capacités Windows actuellement accessibles et propose une démonstration sans risque."),
+            ("Planifier", "Transforme mon objectif en plan d’exécution avec critères de réussite."),
+            ("Recherche approfondie", "Passe en recherche approfondie et construis une réponse vérifiée avec sources."),
+            ("Multi-agent", "Utilise plusieurs spécialistes pour traiter ce problème et synthétise leurs conclusions."),
+            ("Inspecter le PC", "Fais un état des capacités Windows accessibles et propose une démonstration sans risque."),
         ):
             button = QPushButton(label)
             button.setObjectName("secondary")
             button.clicked.connect(lambda _checked=False, p=prompt: self._fill_prompt(p))
             quick.addWidget(button)
         quick.addStretch(1)
-        conv_box.addLayout(quick)
+        conversation.box.addLayout(quick)
         root.addWidget(conversation, 3)
 
         rail = QVBoxLayout()
-        state = Card("Current mission")
-        self.mission_state = QLabel("Idle\n\nGive SKYNET an objective. It will plan, act through governed tools and verify outcomes.")
+        state = Card("Mission actuelle")
+        self.mission_state = QLabel("En attente\n\nDonnez un objectif. SKYNET peut planifier, agir avec ses outils gouvernés et vérifier le résultat.")
         self.mission_state.setWordWrap(True)
         self.mission_state.setObjectName("subtitle")
         state.box.addWidget(self.mission_state)
         rail.addWidget(state)
-        trace_card = Card("Execution trace")
+        trace_card = Card("Trace d’exécution")
         self.chat_trace = QTextBrowser()
         self.chat_trace.setFrameShape(QFrame.NoFrame)
         trace_card.box.addWidget(self.chat_trace, 1)
@@ -562,7 +552,6 @@ class SkynetWindow(QMainWindow):
         self._load_history()
         return host
 
-    # --------------------------------------------------------------- commands
     def _install_shortcuts(self) -> None:
         action = QAction(self)
         action.setShortcut(QKeySequence("Ctrl+K"))
@@ -576,17 +565,18 @@ class SkynetWindow(QMainWindow):
     def open_palette(self) -> None:
         actions: list[tuple[str, str, Callable[[], None]]] = []
         for key, label in (
-            ("home", "Overview"), ("chat", "Mission Control"), ("memory", "Memory"),
-            ("skills", "Skills"), ("automations", "Automations"), ("browser", "Research"),
-            ("integrations", "Integrations"), ("devices", "Devices"), ("sessions", "Sessions"), ("system", "System"),
+            ("home", "Vue d’ensemble"), ("chat", "Centre de mission"), ("memory", "Mémoire"),
+            ("skills", "Compétences"), ("automations", "Automatisations"), ("browser", "Recherche"),
+            ("integrations", "Intégrations"), ("devices", "Appareils"), ("sessions", "Sessions"), ("system", "Système"),
         ):
-            actions.append((f"Open {label}", "Navigate inside SKYNET", lambda page=key: self.navigate(page)))
+            actions.append((f"Ouvrir {label}", "Naviguer dans SKYNET", lambda page=key: self.navigate(page)))
         actions.extend([
-            ("Operate Windows", "Start a governed Windows-control mission", lambda: self._start_prompt("Aide-moi à accomplir une tâche sur Windows avec UI Automation, vérification et permissions.")),
-            ("Deep Research", "Use browser, evidence and synthesis", lambda: self._start_prompt("Je veux lancer une recherche approfondie. Demande-moi le sujet puis exécute une démarche sourcée et vérifiable.")),
-            ("Run multi-agent analysis", "Planner + specialists + verifier", lambda: self._start_prompt("Passe en analyse multi-agent sur le problème que je vais te donner.")),
-            ("Create automation", "Build a session-bound routine", lambda: self._start_prompt("Aide-moi à créer une automatisation locale utile, avec limites, critères de réussite et possibilité d’arrêt.")),
-            ("Global kill switch", "Immediately enter safe mode", self._kill_switch),
+            ("Piloter Windows", "Démarrer une mission de contrôle Windows gouvernée", lambda: self._start_prompt("Aide-moi à accomplir une tâche sur Windows avec UI Automation, vérification et permissions.")),
+            ("Recherche approfondie", "Navigateur, preuves et synthèse", lambda: self._start_prompt("Je veux lancer une recherche approfondie. Demande-moi le sujet puis exécute une démarche sourcée et vérifiable.")),
+            ("Analyse multi-agent", "Planificateur + spécialistes + vérificateur", lambda: self._start_prompt("Passe en analyse multi-agent sur le problème que je vais te donner.")),
+            ("Créer une automatisation", "Construire une routine liée au bon contexte", lambda: self._start_prompt("Aide-moi à créer une automatisation locale utile, avec limites, critères de réussite et possibilité d’arrêt.")),
+            ("Tester la voix", "Faire parler le moteur vocal actuel", self._test_voice),
+            ("Arrêt global", "Passer immédiatement en mode sûr", self._kill_switch),
         ])
         CommandPalette(actions, self).exec()
 
@@ -597,7 +587,12 @@ class SkynetWindow(QMainWindow):
         self.stack.setCurrentWidget(self.pages[page])
         for key, button in self.nav.items():
             button.setChecked(key == page)
-        self.breadcrumb.setText(f"SKYNET / {page.upper()}")
+        titles = {
+            "home": "VUE D’ENSEMBLE", "chat": "CENTRE DE MISSION", "memory": "MÉMOIRE",
+            "skills": "COMPÉTENCES", "automations": "AUTOMATISATIONS", "browser": "RECHERCHE",
+            "integrations": "INTÉGRATIONS", "devices": "APPAREILS", "sessions": "SESSIONS", "system": "SYSTÈME",
+        }
+        self.breadcrumb.setText(f"SKYNET / {titles.get(page, page.upper())}")
         if isinstance(self.pages[page], DataPage):
             self._refresh_data_page(page, self.pages[page])
         if page == "chat":
@@ -621,11 +616,11 @@ class SkynetWindow(QMainWindow):
         if not text:
             return
         self.entry.clear()
-        self._append_message("YOU", text)
-        self.status_label.setText("● MISSION ACTIVE")
+        self._append_message("VOUS", text)
+        self.status_label.setText("● MISSION EN COURS")
         self.orb.set_mode("thinking")
-        self.mission_state.setText("Working…\n\nSKYNET is reasoning, selecting tools and preserving the execution boundary.")
-        self._trace("Mission", "User objective accepted")
+        self.mission_state.setText("En cours…\n\nSKYNET raisonne, sélectionne ses outils et maintient la frontière d’exécution.")
+        self._trace("Mission", "Objectif utilisateur accepté")
         self.bridge.busy.emit(True)
 
         def work() -> None:
@@ -645,7 +640,6 @@ class SkynetWindow(QMainWindow):
         packet["event"].wait()
         return bool(packet["result"])
 
-    # --------------------------------------------------------------- messages
     def _append_message(self, who: str, text: str) -> None:
         color = ACCENT if who == "SKYNET" else TEXT
         safe = html.escape(text).replace("\n", "<br>")
@@ -660,99 +654,100 @@ class SkynetWindow(QMainWindow):
         self.chat.clear()
         messages = self.runtime.memory.recent_messages(self.runtime.agent.session_id, limit=80)
         if not messages:
-            self._append_message("SKYNET", "Systems nominal. Give me an objective, not just a question — I can plan and act through my governed tools.")
+            self._append_message("SKYNET", "Systèmes opérationnels. Donnez-moi un objectif : je peux planifier, agir avec mes outils et vérifier le résultat.")
             return
         for message in messages:
             role = str(message.get("role", "")).lower()
-            who = "YOU" if role == "user" else "SKYNET" if role == "assistant" else role.upper()
+            who = "VOUS" if role == "user" else "SKYNET" if role == "assistant" else role.upper()
             self._append_message(who, str(message.get("content", "")))
 
-    # --------------------------------------------------------------- data views
     def _refresh_data_page(self, key: str, page: DataPage) -> None:
         try:
             if key == "memory":
                 sessions = self.runtime.sessions.list(limit=20)
                 memories = self.runtime.memory.list_memories(limit=20)
-                body = self._cards_html("Persistent memory", [
-                    ("Durable memories", str(len(memories)), "recent entries loaded"),
-                    ("Sessions", str(len(sessions)), "searchable & forkable"),
-                    ("Semantic memory", "ACTIVE", "related context is retrieved automatically"),
-                ]) + "<h3>Recent memories</h3>" + self._items_html(memories)
+                body = self._cards_html("Mémoire persistante", [
+                    ("Souvenirs durables", str(len(memories)), "entrées récentes"),
+                    ("Sessions", str(len(sessions)), "recherchables et bifurcables"),
+                    ("Mémoire sémantique", "ACTIVE", "rappel du contexte pertinent"),
+                ]) + "<h3>Souvenirs récents</h3>" + self._items_html(memories)
             elif key == "skills":
                 skills = self.runtime.skills.list_skills()
-                usage = self.runtime.skills.usage()[:20]
-                body = self._cards_html("Skill system", [
-                    ("Approved", str(len(skills)), "available to the agent"),
-                    ("Progressive loading", "ACTIVE", "only relevant skills enter context"),
-                    ("Candidate pipeline", "GOVERNED", "validate before promotion"),
-                ]) + "<h3>Approved skills</h3>" + self._items_html(skills[:30])
-                if usage:
-                    body += "<h3>Usage</h3>" + self._items_html([str(x) for x in usage])
+                body = self._cards_html("Système de compétences", [
+                    ("Approuvées", str(len(skills)), "disponibles pour l’agent"),
+                    ("Chargement progressif", "ACTIF", "seules les compétences pertinentes entrent en contexte"),
+                    ("Pipeline candidat", "GOUVERNÉ", "validation avant promotion"),
+                ]) + "<h3>Compétences approuvées</h3>" + self._items_html(skills[:30])
             elif key == "automations":
                 routines = self.runtime.routines.list()
-                body = self._cards_html("Autonomy", [
-                    ("Routines", str(len(routines)), "interval / once / run budgets"),
-                    ("Session-bound", "YES", "automation keeps the right context"),
-                    ("Unattended safety", "ACTIVE", "sensitive actions cannot self-approve"),
-                ]) + "<h3>Configured routines</h3>" + self._items_html([self.runtime.routines.render(x) for x in routines])
+                body = self._cards_html("Autonomie", [
+                    ("Routines", str(len(routines)), "intervalle / unique / budget d’exécutions"),
+                    ("Liées aux sessions", "OUI", "le bon contexte est conservé"),
+                    ("Sécurité sans surveillance", "ACTIVE", "les actions sensibles ne s’auto-approuvent pas"),
+                ]) + "<h3>Routines configurées</h3>" + self._items_html([self.runtime.routines.render(x) for x in routines])
             elif key == "browser":
                 state = self.runtime.browser.state()
-                body = self._cards_html("Research stack", [
-                    ("Browser mode", str(state.mode), "local-first harness"),
-                    ("HTTP read", "ACTIVE", "extract text and links"),
-                    ("Interactive browser", "OPTIONAL", "Playwright local when installed"),
-                ]) + "<h3>What this enables</h3>" + self._items_html([
-                    "Evidence collection and source comparison",
-                    "Governed navigation, click, typing and screenshot",
-                    "Research sessions with audit and verification",
+                body = self._cards_html("Pile de recherche", [
+                    ("Mode navigateur", str(state.mode), "local en priorité"),
+                    ("Lecture HTTP", "ACTIVE", "extraction du texte et des liens"),
+                    ("Navigateur interactif", "OPTIONNEL", "Playwright local si installé"),
+                ]) + "<h3>Ce que cela permet</h3>" + self._items_html([
+                    "Collecte de preuves et comparaison de sources",
+                    "Navigation, clic, saisie et capture sous gouvernance",
+                    "Sessions de recherche avec audit et vérification",
                 ])
             elif key == "integrations":
                 integrations = self.runtime.integrations.list(enabled_only=True)
-                body = self._cards_html("Capability fabric", [
-                    ("Active integrations", str(len(integrations)), "built-ins + MCP"),
-                    ("Exposed tools", str(len(self.runtime.tools.schemas())), "all governed"),
-                    ("Dynamic MCP", "ACTIVE", "configured server tools become native SKYNET tools"),
-                ]) + "<h3>Active integrations</h3>" + self._items_html([str(getattr(x, "name", x)) for x in integrations])
+                body = self._cards_html("Tissu de capacités", [
+                    ("Intégrations actives", str(len(integrations)), "internes + MCP"),
+                    ("Outils exposés", str(len(self.runtime.tools.schemas())), "tous gouvernés"),
+                    ("MCP dynamique", "ACTIF", "les outils configurés deviennent natifs"),
+                ]) + "<h3>Intégrations actives</h3>" + self._items_html([str(getattr(x, "name", x)) for x in integrations])
             elif key == "devices":
                 snap = self.runtime.profiler.snapshot()
-                body = self._cards_html("Local machine", [
-                    ("CPU", f"{snap.cpu_count} cores", "local execution"),
-                    ("RAM", self._ram_text(snap), "available / total"),
-                    ("GPU", snap.gpu_name or "Not detected", self._gpu_text(snap)),
-                ]) + "<h3>Windows control</h3>" + self._items_html([
-                    "Accessibility / UI Automation first",
-                    "Screenshot and vision fallback",
-                    "PowerShell through permission + policy boundary",
+                body = self._cards_html("Machine locale", [
+                    ("CPU", f"{snap.cpu_count} cœurs", "exécution locale"),
+                    ("RAM", self._ram_text(snap), "disponible / total"),
+                    ("GPU", snap.gpu_name or "Non détecté", self._gpu_text(snap)),
+                ]) + "<h3>Contrôle Windows</h3>" + self._items_html([
+                    "Accessibilité et UI Automation en priorité",
+                    "Capture d’écran et vision en secours",
+                    "PowerShell derrière permission et politique",
                 ])
             elif key == "sessions":
                 sessions = self.runtime.sessions.list(limit=100)
-                body = self._cards_html("Continuity", [
-                    ("Sessions", str(len(sessions)), "durable conversation state"),
-                    ("Search", "ACTIVE", "find earlier context"),
-                    ("Fork", "ACTIVE", "branch investigations safely"),
-                ]) + "<h3>Recent sessions</h3>" + self._items_html([f"{x.title} · {x.session_id}" for x in sessions[:40]])
+                body = self._cards_html("Continuité", [
+                    ("Sessions", str(len(sessions)), "état conversationnel durable"),
+                    ("Recherche", "ACTIVE", "retrouver le contexte précédent"),
+                    ("Bifurcation", "ACTIVE", "ouvrir une investigation sans perdre l’original"),
+                ]) + "<h3>Sessions récentes</h3>" + self._items_html([f"{x.title} · {x.session_id}" for x in sessions[:40]])
             elif key == "system":
-                body = self._cards_html("Governance", [
-                    ("Kill switch", "ENGAGED" if self.runtime.control.engaged() else "ARMED", "global control"),
-                    ("Receipts", "SIGNED", "actions leave verifiable evidence"),
-                    ("Permissions", "ENFORCED", "unknown tools are blocked"),
-                ]) + "<h3>Execution boundary</h3>" + self._items_html([
-                    "Mandate → Policy → Permission → Execution → Receipt",
-                    "Risk budget and non-reversible action classification",
-                    "Sandboxed candidate evolution, canary promotion and rollback",
-                    "Synthetic reality accelerator + regression replay",
+                voice = self.voice.status()
+                body = self._cards_html("Gouvernance", [
+                    ("Arrêt global", "ENGAGÉ" if self.runtime.control.engaged() else "ARMÉ", "contrôle général"),
+                    ("Reçus", "SIGNÉS", "les actions laissent une preuve vérifiable"),
+                    ("Permissions", "APPLIQUÉES", "les outils inconnus sont bloqués"),
+                ]) + self._cards_html("Présence vocale", [
+                    ("Moteur", voice.provider, voice.detail),
+                    ("Voix", voice.voice or "—", "français par défaut"),
+                    ("État", "PRÊTE" if voice.ready else "INDISPONIBLE", voice.last_error or "aucune erreur"),
+                ]) + "<h3>Frontière d’exécution</h3>" + self._items_html([
+                    "Mandat → politique → permission → exécution → reçu",
+                    "Budget de risque et classification des actions irréversibles",
+                    "Évolution en bac à sable, canari et retour arrière",
+                    "Accélérateur de réalité synthétique et rejeu des régressions",
                 ])
             else:
                 body = ""
             page.set_html(body)
         except Exception as exc:
-            page.set_html(f"<p style='color:{RED}'>Unable to refresh page: {html.escape(str(exc))}</p>")
+            page.set_html(f"<p style='color:{RED}'>Impossible d’actualiser la page : {html.escape(str(exc))}</p>")
 
     @staticmethod
     def _items_html(items) -> str:
         values = list(items)
         if not values:
-            return f"<p style='color:{MUTED}'>Nothing recorded yet.</p>"
+            return f"<p style='color:{MUTED}'>Rien d’enregistré pour le moment.</p>"
         return "<ul style='line-height:1.7'>" + "".join(f"<li>{html.escape(str(x))}</li>" for x in values) + "</ul>"
 
     @staticmethod
@@ -769,38 +764,31 @@ class SkynetWindow(QMainWindow):
     @staticmethod
     def _ram_text(snap) -> str:
         if snap.ram_total_mb is None or snap.ram_available_mb is None:
-            return "Unknown"
-        return f"{snap.ram_available_mb/1024:.1f} / {snap.ram_total_mb/1024:.1f} GB"
+            return "Inconnue"
+        return f"{snap.ram_available_mb/1024:.1f} / {snap.ram_total_mb/1024:.1f} Go"
 
     @staticmethod
     def _gpu_text(snap) -> str:
         if snap.gpu_memory_total_mb is None:
-            return "VRAM telemetry unavailable"
+            return "Télémétrie VRAM indisponible"
         used = snap.gpu_memory_used_mb or 0
-        return f"{used/1024:.1f} / {snap.gpu_memory_total_mb/1024:.1f} GB VRAM"
+        return f"{used/1024:.1f} / {snap.gpu_memory_total_mb/1024:.1f} Go VRAM"
 
-    # --------------------------------------------------------------- dynamic
     def _refresh_dynamic(self) -> None:
         try:
-            tool_count = len(self.runtime.tools.schemas())
-            integration_count = len(self.runtime.integrations.list(enabled_only=True))
-            session_count = len(self.runtime.sessions.list(limit=500))
-            skill_count = len(self.runtime.skills.list_skills())
-            self.metric_tools.value_widget.setText(str(tool_count))  # type: ignore[attr-defined]
-            self.metric_integrations.value_widget.setText(str(integration_count))  # type: ignore[attr-defined]
-            self.metric_sessions.value_widget.setText(str(session_count))  # type: ignore[attr-defined]
-            self.metric_skills.value_widget.setText(str(skill_count))  # type: ignore[attr-defined]
+            self.metric_tools.value_widget.setText(str(len(self.runtime.tools.schemas())))  # type: ignore[attr-defined]
+            self.metric_integrations.value_widget.setText(str(len(self.runtime.integrations.list(enabled_only=True))))  # type: ignore[attr-defined]
+            self.metric_sessions.value_widget.setText(str(len(self.runtime.sessions.list(limit=500))))  # type: ignore[attr-defined]
+            self.metric_skills.value_widget.setText(str(len(self.runtime.skills.list_skills())))  # type: ignore[attr-defined]
             voice = self.voice.status()
-            self.side_voice.setText(f"VOICE\n{voice.provider}\n{voice.detail}")
+            self.side_voice.setText(f"VOIX\n{voice.provider}\n{voice.detail}")
             snap = self.runtime.profiler.snapshot()
-            ram = self._ram_text(snap)
-            gpu = snap.gpu_name or "GPU not detected"
             posture = (
-                f"<b>Model</b> · {html.escape(self.runtime.router.last_route.model)}<br>"
-                f"<b>RAM</b> · {html.escape(ram)}<br>"
-                f"<b>GPU</b> · {html.escape(gpu)}<br>"
-                f"<b>Browser</b> · {html.escape(str(self.runtime.browser.state().mode))}<br>"
-                f"<b>Kill switch</b> · {'ENGAGED' if self.runtime.control.engaged() else 'ready'}"
+                f"<b>Modèle</b> · {html.escape(self.runtime.router.last_route.model)}<br>"
+                f"<b>RAM</b> · {html.escape(self._ram_text(snap))}<br>"
+                f"<b>GPU</b> · {html.escape(snap.gpu_name or 'non détecté')}<br>"
+                f"<b>Navigateur</b> · {html.escape(str(self.runtime.browser.state().mode))}<br>"
+                f"<b>Arrêt global</b> · {'ENGAGÉ' if self.runtime.control.engaged() else 'prêt'}"
             )
             self.home_system.setText(posture)
         except Exception:
@@ -820,36 +808,55 @@ class SkynetWindow(QMainWindow):
         if hasattr(self, "chat_trace"):
             self.chat_trace.setPlainText("\n".join(self.trace_lines[-24:]))
 
-    # --------------------------------------------------------------- voice/safe
+    def _announce_startup(self) -> None:
+        if not self.voice_enabled:
+            return
+        hour = time.localtime().tm_hour
+        salutation = "Bonjour" if 5 <= hour < 18 else "Bonsoir"
+        model = self.runtime.router.last_route.model.replace(":", " ")
+        text = (
+            f"Initialisation de SKYNET. Noyau souverain chargé. Mémoire persistante en ligne. "
+            f"Gouvernance et contrôle des permissions actifs. Modèle local {model} prêt. "
+            f"{salutation}. Tous les systèmes sont opérationnels."
+        )
+        self._trace("Présence", f"Annonce de démarrage · {self.voice.status().provider}")
+        self.voice.speak(text)
+
+    def _test_voice(self) -> None:
+        self.voice.refresh()
+        status = self.voice.status()
+        self._trace("Voix", f"Test · {status.provider}")
+        self.voice.speak("Test vocal. SKYNET est en ligne. La présence vocale française est opérationnelle.")
+
     def _toggle_voice(self) -> None:
         self.voice_enabled = not self.voice_enabled
         if not self.voice_enabled:
             self.voice.stop()
-            self._trace("Voice", "Speech disabled")
+            self._trace("Voix", "Synthèse vocale désactivée")
         else:
             self.voice.refresh()
-            self._trace("Voice", f"Speech enabled · {self.voice.status().provider}")
+            self._trace("Voix", f"Synthèse vocale activée · {self.voice.status().provider}")
+            self._test_voice()
 
     def _kill_switch(self) -> None:
         answer = QMessageBox.warning(
             self,
-            "Global kill switch",
-            "Engage SKYNET safe mode and stop autonomous execution?",
+            "Arrêt global SKYNET",
+            "Passer SKYNET en mode sûr et arrêter l’exécution autonome ?",
             QMessageBox.Yes | QMessageBox.Cancel,
             QMessageBox.Cancel,
         )
         if answer != QMessageBox.Yes:
             return
         try:
-            self.runtime.control.engage("manual UI kill switch")
+            self.runtime.control.engage("arrêt global manuel depuis l’interface")
             self.orb.set_mode("stopped")
-            self.status_label.setText("● SAFE MODE")
+            self.status_label.setText("● MODE SÛR")
             self.status_label.setStyleSheet(f"color:{RED};font-weight:700")
-            self._trace("Security", "Global kill switch engaged")
+            self._trace("Sécurité", "Arrêt global engagé")
         except Exception as exc:
-            QMessageBox.critical(self, "Kill switch", str(exc))
+            QMessageBox.critical(self, "Arrêt global", str(exc))
 
-    # --------------------------------------------------------------- bridge
     def _connect_bridge(self) -> None:
         self.bridge.reply.connect(self._on_reply)
         self.bridge.error.connect(self._on_error)
@@ -860,44 +867,47 @@ class SkynetWindow(QMainWindow):
 
     def _on_reply(self, reply: str) -> None:
         self._append_message("SKYNET", reply)
-        self.mission_state.setText("Completed\n\nThe latest response was produced through the governed runtime. Use the trace to inspect the execution path.")
-        self._trace("Output", "Mission response completed")
+        self.mission_state.setText("Terminée\n\nLa réponse vient du Runtime gouverné. La trace permet d’inspecter le chemin d’exécution.")
+        self._trace("Sortie", "Réponse de mission terminée")
         if self.voice_enabled:
             self.voice.speak(reply)
 
     def _on_error(self, message: str) -> None:
-        self._append_message("SYSTEM", message)
-        self.mission_state.setText(f"Blocked / failed\n\n{message}")
-        self._trace("Error", message[:120])
+        self._append_message("SYSTÈME", message)
+        self.mission_state.setText(f"Bloquée / échouée\n\n{message}")
+        self._trace("Erreur", message[:120])
 
     def _on_busy(self, busy: bool) -> None:
         if busy:
-            self.status_label.setText("● MISSION ACTIVE")
+            self.status_label.setText("● MISSION EN COURS")
             self.orb.set_mode("thinking")
         else:
-            self.status_label.setText("● SYSTEMS NOMINAL")
+            self.status_label.setText("● SYSTÈMES OPÉRATIONNELS")
             self.orb.set_mode("idle" if not self.runtime.control.engaged() else "stopped")
 
     def _on_confirm(self, message: str, packet: object) -> None:
         data = packet
         answer = QMessageBox.question(
             self,
-            "SKYNET permission request",
+            "Demande d’autorisation SKYNET",
             message,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
         data["result"] = answer == QMessageBox.Yes  # type: ignore[index]
         data["event"].set()  # type: ignore[index]
-        self._trace("Permission", "Approved" if data["result"] else "Denied")  # type: ignore[index]
+        self._trace("Permission", "Approuvée" if data["result"] else "Refusée")  # type: ignore[index]
 
     def _on_voice_state(self, state: str) -> None:
         if state == "speaking":
-            self._trace("Voice", f"Speaking · {self.voice.status().provider}")
-        elif state == "error":
-            self._trace("Voice", "Speech provider failed")
+            self._trace("Voix", f"Parle · {self.voice.status().provider}")
+        elif state.startswith("loading:"):
+            self._trace("Voix", state.split(":", 1)[1])
+        elif state.startswith("fallback:"):
+            self._trace("Voix", "Bascule moteur · " + state.split(":", 1)[1][:100])
+        elif state.startswith("error:"):
+            self._trace("Voix", "Échec · " + state.split(":", 1)[1][:120])
 
-    # --------------------------------------------------------------- lifecycle
     def closeEvent(self, event) -> None:
         self.voice.stop()
         self.pool.shutdown(wait=False, cancel_futures=True)
