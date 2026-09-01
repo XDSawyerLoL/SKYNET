@@ -16,7 +16,28 @@ class PresenceV011Tests(unittest.TestCase):
             status = engine.status()
             self.assertIn(status.provider, {"Chatterbox Multilingual V3", "Kokoro 82M local", "Windows SAPI", "aucun"})
             self.assertIsInstance(status.ready, bool)
-            engine.stop()
+            self.assertTrue(engine.diagnostics()["female_only"])
+            engine.close()
+
+    def test_premium_voice_requires_female_reference(self):
+        from skynet.voice import VoiceEngine
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            voice_dir = root / "voice"
+            premium_python = voice_dir / "venv" / "Scripts" / "python.exe"
+            premium_python.parent.mkdir(parents=True, exist_ok=True)
+            premium_python.write_bytes(b"")
+            (voice_dir / "chatterbox.enabled").write_text("enabled", encoding="utf-8")
+
+            engine = VoiceEngine(root)
+            self.assertFalse(engine._chatterbox_available())
+
+            (voice_dir / "reference.wav").write_bytes(b"R" * 25000)
+            self.assertTrue(engine._chatterbox_available())
+            status = engine.refresh()
+            self.assertEqual(status.provider, "Chatterbox Multilingual V3")
+            self.assertIn("féminine", status.voice)
+            engine.close()
 
     def test_presence_home_exposes_capability_first_french_language(self):
         import inspect
