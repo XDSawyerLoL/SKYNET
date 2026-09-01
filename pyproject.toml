@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skynet-local-ai"
-version = "0.8.0"
-description = "Sovereign local-first governed personal AI with adaptive evolution, trust and resilience for Windows"
+version = "0.9.0"
+description = "Sovereign local-first personal AI with product-grade sessions, integrations, browser, skills, multi-agent orchestration and resilience"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "SKYNET Project"}]
@@ -18,6 +18,8 @@ skynet-worker = "skynet.worker:main"
 skynet-evolve = "skynet.evolve_cli:main"
 skynet-supervisor = "skynet.supervisor_cli:main"
 skynet-trust = "skynet.trust_cli:main"
+skynet-admin = "skynet.admin_cli:main"
+skynet-channel = "skynet.channel_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
