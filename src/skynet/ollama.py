@@ -16,8 +16,9 @@ class OllamaClient:
 
     def _json(self, method: str, path: str, payload: dict | None = None) -> dict:
         data = None if payload is None else json.dumps(payload).encode("utf-8")
+        url = f"{self.base_url}{path}"
         req = request.Request(
-            f"{self.base_url}{path}",
+            url,
             data=data,
             method=method,
             headers={"Content-Type": "application/json"},
@@ -25,8 +26,34 @@ class OllamaClient:
         try:
             with request.urlopen(req, timeout=self.timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                pass
+            detail = body
+            try:
+                parsed = json.loads(body) if body else {}
+                if isinstance(parsed, dict) and parsed.get("error"):
+                    detail = str(parsed["error"])
+            except json.JSONDecodeError:
+                pass
+
+            lower = detail.casefold()
+            if exc.code == 404 and path == "/api/chat" and "model" in lower and "not found" in lower:
+                raise OllamaError(
+                    f"Le modèle Ollama '{self.model}' n'est pas installé. "
+                    f"Installe-le avec : ollama pull {self.model}"
+                ) from exc
+
+            suffix = f": {detail}" if detail else ""
+            raise OllamaError(f"Ollama HTTP {exc.code} at {url}{suffix}") from exc
         except error.URLError as exc:
-            raise OllamaError(f"Ollama inaccessible at {self.base_url}: {exc}") from exc
+            raise OllamaError(
+                f"Ollama inaccessible at {self.base_url}: {exc}. "
+                "Vérifie qu'Ollama est installé et lancé."
+            ) from exc
         except json.JSONDecodeError as exc:
             raise OllamaError("Invalid JSON returned by Ollama") from exc
 
