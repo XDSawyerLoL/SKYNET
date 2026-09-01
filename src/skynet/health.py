@@ -107,8 +107,9 @@ class CrashLoopGuard:
 
     def count(self) -> int:
         now = time.time()
-        events = [x for x in self._load() if now - x <= self.window_s]
-        if len(events) != len(self._load()):
+        original = self._load()
+        events = [x for x in original if now - x <= self.window_s]
+        if len(events) != len(original):
             self._save(events)
         return len(events)
 
@@ -122,16 +123,18 @@ class CrashLoopGuard:
 class WorkerSupervisor:
     """Separate watchdog for the autonomy worker.
 
-    Restarts unexpected worker failures unless the global kill-switch is engaged
-    or crash-loop protection trips. It never weakens agent permissions.
+    Restarts unexpected worker failures or heartbeat stalls unless the global
+    kill-switch is engaged or crash-loop protection trips. It never weakens
+    agent permissions.
     """
 
-    def __init__(self, root: Path, data_dir: Path, poll_s: int = 5) -> None:
+    def __init__(self, root: Path, data_dir: Path, poll_s: int = 5, stale_after_s: int = 30) -> None:
         self.root = root.resolve()
         self.heartbeat = HeartbeatStore(data_dir / "heartbeats.json")
         self.control = GlobalControl(data_dir / "kill-switch.json")
         self.crashes = CrashLoopGuard(data_dir / "worker-crashes.json")
         self.poll_s = max(2, int(poll_s))
+        self.stale_after_s = max(15, int(stale_after_s))
 
     def _spawn(self) -> subprocess.Popen:
         env = dict(os.environ)
@@ -143,21 +146,37 @@ class WorkerSupervisor:
             shell=False,
         )
 
+    @staticmethod
+    def _stop_child(child: subprocess.Popen) -> None:
+        if child.poll() is not None:
+            return
+        child.terminate()
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait(timeout=5)
+
     def run(self) -> int:
         child: subprocess.Popen | None = None
+        child_started = 0.0
         try:
             while True:
                 self.heartbeat.beat("supervisor", "monitoring")
                 if self.control.engaged():
-                    if child is not None and child.poll() is None:
-                        child.terminate()
+                    if child is not None:
+                        self._stop_child(child)
                     return 0
                 if self.crashes.blocked():
                     self.control.engage("crash-loop protection")
+                    if child is not None:
+                        self._stop_child(child)
                     return 2
                 if child is None:
                     child = self._spawn()
+                    child_started = time.time()
                     self.heartbeat.beat("supervisor", f"worker-started:{child.pid}")
+
                 code = child.poll()
                 if code is not None:
                     if code == 0:
@@ -166,8 +185,20 @@ class WorkerSupervisor:
                     child = None
                     time.sleep(min(self.poll_s, 5))
                     continue
+
+                if time.time() - child_started > self.stale_after_s:
+                    worker = self.heartbeat.get("worker")
+                    wrong_pid = worker is None or worker.pid != child.pid
+                    stale = worker is None or (time.time() - worker.timestamp) > self.stale_after_s
+                    if wrong_pid or stale:
+                        self.heartbeat.beat("supervisor", f"worker-hung:{child.pid}")
+                        self._stop_child(child)
+                        self.crashes.record_crash()
+                        child = None
+                        continue
+
                 time.sleep(self.poll_s)
         except KeyboardInterrupt:
-            if child is not None and child.poll() is None:
-                child.terminate()
+            if child is not None:
+                self._stop_child(child)
             return 0
