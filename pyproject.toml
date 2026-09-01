@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skynet-local-ai"
-version = "0.11.1"
-description = "Sovereign local-first personal AI with GNOME-inspired Qt Presence UX, robust local voice diagnostics, accelerated reality simulation, product-grade sessions, integrations, browser, skills, multi-agent orchestration and resilience"
+version = "0.12.0"
+description = "Sovereign local-first personal AI with French Qt Presence UX, layered local neural voice, accelerated reality simulation, product-grade sessions, integrations, browser, skills, multi-agent orchestration and resilience"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "SKYNET Project"}]
