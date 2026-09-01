@@ -41,26 +41,23 @@ class AutonomyRunner:
             denied = True
             return False
 
-        previous_session = self.agent.session_id
         try:
-            self.agent.session_id = routine.session_id or "autonomy"
-            if self.agent.sessions is not None:
-                try:
-                    self.agent.sessions.ensure(self.agent.session_id, title=routine.name, channel="automation")
-                except Exception:
-                    pass
-            reply = self.agent.ask(prompt, deny_sensitive)
+            reply = self.agent.ask_in_session(
+                routine.session_id or "autonomy",
+                prompt,
+                deny_sensitive,
+                title=routine.name,
+                channel="automation",
+            )
             status = "needs_user" if denied else "ok"
-            self.checkpoints.save("routine", routine.id, status, {"reply": reply, "session_id": self.agent.session_id, "finished_at": time.time()})
+            self.checkpoints.save("routine", routine.id, status, {"reply": reply, "session_id": routine.session_id, "finished_at": time.time()})
             self.routines.mark_result(routine.id, status)
             return status, reply
         except Exception as exc:
             message = f"{type(exc).__name__}: {exc}"
-            self.checkpoints.save("routine", routine.id, "failed", {"error": message, "session_id": self.agent.session_id, "failed_at": time.time()})
+            self.checkpoints.save("routine", routine.id, "failed", {"error": message, "session_id": routine.session_id, "failed_at": time.time()})
             self.routines.mark_result(routine.id, "failed")
             return "failed", message
-        finally:
-            self.agent.session_id = previous_session
 
     def run_due(self, notify: Callable[[Routine, str, str], None] | None = None) -> list[tuple[Routine, str, str]]:
         results: list[tuple[Routine, str, str]] = []
