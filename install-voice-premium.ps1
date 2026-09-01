@@ -36,8 +36,11 @@ Write-Host 'Installation des composants audio légers dans le coeur SKYNET...'
 & $basePython -m pip install --upgrade 'numpy>=2.0.2' kokoro-onnx sounddevice soundfile 'misaki-fork[en]'
 if ($LASTEXITCODE -ne 0) { throw 'Echec installation composants audio de base.' }
 
-Write-Host 'Création de l identité vocale féminine SKYNET...' -ForegroundColor Cyan
-$referenceScript = @'
+if (Test-Path $reference) {
+    Write-Host 'Référence vocale personnalisée détectée : elle sera conservée.' -ForegroundColor Green
+} else {
+    Write-Host 'Aucune référence personnalisée : création de l identité vocale féminine SKYNET...' -ForegroundColor Cyan
+    $referenceScript = @'
 from pathlib import Path
 import soundfile as sf
 from kokoro_onnx import Kokoro
@@ -72,16 +75,17 @@ if not reference_path.exists() or reference_path.stat().st_size < 20000:
     raise RuntimeError("référence féminine générée invalide")
 print(reference_path)
 '@
-$escapedVoiceDir = $voiceDir.Replace('\', '\\')
-$referenceScript = $referenceScript.Replace('__VOICE_DIR__', $escapedVoiceDir)
-$tempRef = Join-Path $env:TEMP ('skynet-female-reference-' + [guid]::NewGuid().ToString('N') + '.py')
-Set-Content -LiteralPath $tempRef -Value $referenceScript -Encoding UTF8
-try {
-    & $basePython $tempRef
-    if ($LASTEXITCODE -ne 0) { throw 'Echec génération référence féminine SKYNET.' }
-}
-finally {
-    Remove-Item -LiteralPath $tempRef -Force -ErrorAction SilentlyContinue
+    $escapedVoiceDir = $voiceDir.Replace('\', '\\')
+    $referenceScript = $referenceScript.Replace('__VOICE_DIR__', $escapedVoiceDir)
+    $tempRef = Join-Path $env:TEMP ('skynet-female-reference-' + [guid]::NewGuid().ToString('N') + '.py')
+    Set-Content -LiteralPath $tempRef -Value $referenceScript -Encoding UTF8
+    try {
+        & $basePython $tempRef
+        if ($LASTEXITCODE -ne 0) { throw 'Echec génération référence féminine SKYNET.' }
+    }
+    finally {
+        Remove-Item -LiteralPath $tempRef -Force -ErrorAction SilentlyContinue
+    }
 }
 
 if (-not (Test-Path $reference)) {
