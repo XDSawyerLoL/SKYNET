@@ -44,6 +44,22 @@ Operating doctrine:
 - If a task cannot be completed, explain the concrete blocker rather than pretending.
 """
 
+FAST_SYSTEM_PROMPT = """Tu es SKYNET, l'assistante IA locale de l'utilisateur.
+Réponds en français naturel, fluide et direct. Tu es conversationnelle, concise quand la question est simple et détaillée quand c'est utile.
+N'invente jamais une action sur le PC : ce mode est uniquement conversationnel. Si l'utilisateur demande explicitement d'agir sur Windows, des fichiers, le web, du code, GitHub ou une automatisation, le runtime basculera vers le mode agentique.
+Évite les emojis décoratifs et le jargon inutile. Le texte doit aussi être agréable à entendre à voix haute.
+"""
+
+_AGENTIC_HINTS = (
+    "ouvre ", "lance ", "démarre ", "ferme ", "clique", "saisis", "écris dans", "copie ", "déplace ",
+    "crée un fichier", "modifie ", "supprime ", "installe ", "désinstalle ", "exécute ", "execute ",
+    "powershell", "terminal", "commande ", "script ", "github", "commit", "pull request", "repo ", "dépôt ",
+    "navigue", "navigateur", "cherche sur le web", "recherche sur le web", "internet", "télécharge", "telecharge",
+    "capture d'écran", "capture écran", "écran", "windows", "fichier", "dossier", "workspace", "outil", "mcp",
+    "automatise", "automatisation", "routine", "planifie une tâche", "programme ", "skill", "compétence",
+    "multi-agent", "swarm", "corrige le code", "répare ", "fais-le", "fait le", "fais ça", "fait ça",
+)
+
 
 class Agent:
     def __init__(
@@ -94,6 +110,27 @@ class Agent:
             messages.append({"role": "system", "content": "Inactive skill candidates awaiting validation/promotion: " + ", ".join(candidates) + ". Do not treat them as trusted procedures."})
         messages.extend(self.memory.recent_messages(self.session_id, limit=24))
         return messages
+
+    def _fast_context(self) -> list[dict]:
+        messages: list[dict] = [{"role": "system", "content": FAST_SYSTEM_PROMPT}]
+        try:
+            memories = self.memory.list_memories(limit=5)
+        except Exception:
+            memories = []
+        if memories:
+            messages.append({
+                "role": "system",
+                "content": "Quelques souvenirs locaux utiles, potentiellement anciens :\n" + "\n".join(f"- {item}" for item in memories),
+            })
+        messages.extend(self.memory.recent_messages(self.session_id, limit=8))
+        return messages
+
+    @staticmethod
+    def requires_agentic_mode(user_text: str) -> bool:
+        text = " ".join(str(user_text).casefold().split())
+        if not text:
+            return False
+        return any(hint in text for hint in _AGENTIC_HINTS)
 
     @staticmethod
     def _arguments(call: dict) -> dict:
@@ -170,9 +207,59 @@ class Agent:
         self._record_trajectory(user_text, final, total_tool_calls, outcome="failed")
         return final
 
+    def _fast_chat_locked(self, user_text: str, on_token: Callable[[str], None] | None = None) -> str:
+        self._touch_session(user_text)
+        messages = self._fast_context()
+        self.memory.add_message(self.session_id, "user", user_text)
+        messages.append({"role": "user", "content": user_text})
+        chunks: list[str] = []
+        streamer = getattr(self.client, "chat_stream", None)
+        if callable(streamer):
+            for chunk in streamer(messages):
+                piece = str(chunk)
+                if not piece:
+                    continue
+                chunks.append(piece)
+                if on_token is not None:
+                    on_token(piece)
+            final = "".join(chunks).strip()
+        else:
+            assistant = self.client.chat(messages, tools=None)
+            final = str(assistant.get("content") or "").strip()
+            if final and on_token is not None:
+                on_token(final)
+        if not final:
+            final = "Je n’ai pas reçu de réponse exploitable du modèle local."
+        self.memory.add_message(self.session_id, "assistant", final)
+        self._record_trajectory(user_text, final, 0)
+        return final
+
     def ask(self, user_text: str, confirmer: Callable[[str], bool]) -> str:
         with self.run_lock:
             return self._ask_locked(user_text, confirmer)
+
+    def ask_stream(
+        self,
+        user_text: str,
+        confirmer: Callable[[str], bool],
+        on_token: Callable[[str], None] | None = None,
+        *,
+        force_agent: bool = False,
+    ) -> str:
+        """Conversation-first entry point.
+
+        Ordinary chat uses a compact tool-free streaming context. Requests that
+        look operational automatically escalate to the full governed agent loop.
+        The UI can also force agent mode explicitly.
+        """
+
+        with self.run_lock:
+            if force_agent or self.requires_agentic_mode(user_text):
+                final = self._ask_locked(user_text, confirmer)
+                if on_token is not None:
+                    on_token(final)
+                return final
+            return self._fast_chat_locked(user_text, on_token)
 
     def ask_in_session(self, session_id: str, user_text: str, confirmer: Callable[[str], bool], *, title: str | None = None, channel: str = "local") -> str:
         clean = session_id.strip()[:128]
