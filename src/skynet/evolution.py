@@ -8,6 +8,7 @@ import json
 import re
 import sqlite3
 import statistics
+import threading
 import time
 
 from .ollama import OllamaClient
@@ -57,12 +58,7 @@ class PromotionDecision:
 
 
 class EvalSuite:
-    """Deterministic, local benchmark definitions.
-
-    Cases deliberately use objective checks rather than asking an LLM to judge
-    another LLM. More domain-specific suites can be added without changing the
-    evolution engine.
-    """
+    """Deterministic, local benchmark definitions."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -90,21 +86,23 @@ class EvalSuite:
 
 class ScoreStore:
     def __init__(self, path: Path) -> None:
-        self.db = sqlite3.connect(path)
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS scorecards (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                candidate TEXT NOT NULL,
-                suite_hash TEXT NOT NULL,
-                mean_score REAL NOT NULL,
-                pass_rate REAL NOT NULL,
-                latency_median REAL NOT NULL,
-                safety_failures INTEGER NOT NULL,
-                payload TEXT NOT NULL
-            )
-        """)
-        self.db.commit()
+        self.db = sqlite3.connect(path, check_same_thread=False)
+        self.lock = threading.RLock()
+        with self.lock:
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS scorecards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    candidate TEXT NOT NULL,
+                    suite_hash TEXT NOT NULL,
+                    mean_score REAL NOT NULL,
+                    pass_rate REAL NOT NULL,
+                    latency_median REAL NOT NULL,
+                    safety_failures INTEGER NOT NULL,
+                    payload TEXT NOT NULL
+                )
+            """)
+            self.db.commit()
 
     def append(self, score: CandidateScore, suite_hash: str) -> int:
         payload = {
@@ -115,34 +113,38 @@ class ScoreStore:
             "safety_failures": score.safety_failures,
             "cases": [asdict(c) for c in score.cases],
         }
-        cur = self.db.execute(
-            "INSERT INTO scorecards(ts,candidate,suite_hash,mean_score,pass_rate,latency_median,safety_failures,payload) VALUES(?,?,?,?,?,?,?,?)",
-            (time.time(), score.candidate, suite_hash, score.mean_score, score.pass_rate, score.latency_median_s,
-             score.safety_failures, json.dumps(payload, ensure_ascii=False)),
-        )
-        self.db.commit()
-        return int(cur.lastrowid)
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO scorecards(ts,candidate,suite_hash,mean_score,pass_rate,latency_median,safety_failures,payload) VALUES(?,?,?,?,?,?,?,?)",
+                (time.time(), score.candidate, suite_hash, score.mean_score, score.pass_rate, score.latency_median_s,
+                 score.safety_failures, json.dumps(payload, ensure_ascii=False)),
+            )
+            self.db.commit()
+            return int(cur.lastrowid)
 
     def recent(self, limit: int = 20) -> list[dict]:
-        rows = self.db.execute(
-            "SELECT id,ts,candidate,suite_hash,mean_score,pass_rate,latency_median,safety_failures FROM scorecards ORDER BY id DESC LIMIT ?",
-            (max(1, min(limit, 100)),),
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT id,ts,candidate,suite_hash,mean_score,pass_rate,latency_median,safety_failures FROM scorecards ORDER BY id DESC LIMIT ?",
+                (max(1, min(limit, 100)),),
+            ).fetchall()
         keys = ("id", "ts", "candidate", "suite_hash", "mean_score", "pass_rate", "latency_median", "safety_failures")
         return [dict(zip(keys, row)) for row in rows]
 
     def latest_for(self, candidate: str) -> dict | None:
-        row = self.db.execute(
-            "SELECT id,ts,candidate,suite_hash,mean_score,pass_rate,latency_median,safety_failures FROM scorecards WHERE candidate=? ORDER BY id DESC LIMIT 1",
-            (candidate,),
-        ).fetchone()
+        with self.lock:
+            row = self.db.execute(
+                "SELECT id,ts,candidate,suite_hash,mean_score,pass_rate,latency_median,safety_failures FROM scorecards WHERE candidate=? ORDER BY id DESC LIMIT 1",
+                (candidate,),
+            ).fetchone()
         if row is None:
             return None
         keys = ("id", "ts", "candidate", "suite_hash", "mean_score", "pass_rate", "latency_median", "safety_failures")
         return dict(zip(keys, row))
 
     def close(self) -> None:
-        self.db.close()
+        with self.lock:
+            self.db.close()
 
 
 def _contains(text: str, term: str) -> bool:
