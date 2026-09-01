@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 import json
 import os
@@ -77,6 +77,22 @@ class AdaptiveLab:
                 return backend
         return self.backends()[-1]
 
+    @staticmethod
+    def _wsl_path(path: Path) -> str:
+        executable = shutil.which("wsl.exe") or shutil.which("wsl")
+        if not executable:
+            raise RuntimeError("WSL is not available")
+        completed = subprocess.run(
+            [executable, "wslpath", "-a", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            shell=False,
+        )
+        if completed.returncode != 0 or not completed.stdout.strip():
+            raise RuntimeError((completed.stderr or "wslpath failed").strip())
+        return completed.stdout.strip()
+
     def prepare(self, candidate: str, backend: str | None = None) -> LabJob:
         candidate_dir = (self.candidate_root / candidate).resolve()
         candidate_dir.relative_to(self.candidate_root)
@@ -124,13 +140,6 @@ class AdaptiveLab:
   <LogonCommand><Command>{command}</Command></LogonCommand>
 </Configuration>"""
             (job_dir / "job.wsb").write_text(config, encoding="utf-8")
-        elif selected.name == "wsl2":
-            script = (
-                "#!/bin/sh\nset -eu\n"
-                f"find '{candidate_dir}' -maxdepth 3 -type f -print > '{job_dir / 'inventory.txt'}'\n"
-                f"printf '%s\\n' wsl-complete > '{job_dir / 'status.txt'}'\n"
-            )
-            (job_dir / "run.sh").write_text(script, encoding="utf-8")
 
         return LabJob(job_id, candidate, selected.name, manifest["created_at"], str(job_dir), "prepared")
 
@@ -139,18 +148,31 @@ class AdaptiveLab:
         job_dir.relative_to(self.root)
         data = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
         backend = data["backend"]
+        candidate_dir = Path(data["candidate_dir"])
+
         if backend == "windows-sandbox":
             executable = shutil.which("WindowsSandbox.exe")
             if not executable:
                 raise RuntimeError("Windows Sandbox is no longer available")
             subprocess.Popen([executable, str(job_dir / "job.wsb")], shell=False)
             return "Windows Sandbox launched. Candidate folder is mapped read-only and networking is disabled."
+
         if backend == "wsl2":
             executable = shutil.which("wsl.exe") or shutil.which("wsl")
             if not executable:
                 raise RuntimeError("WSL is no longer available")
-            completed = subprocess.run([executable, "sh", str(job_dir / "run.sh")], capture_output=True, text=True, timeout=30, shell=False)
+            candidate_wsl = self._wsl_path(candidate_dir)
+            output_wsl = self._wsl_path(job_dir / "inventory.txt")
+            command = f"find '{candidate_wsl}' -maxdepth 3 -type f -print > '{output_wsl}'"
+            completed = subprocess.run(
+                [executable, "sh", "-lc", command],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                shell=False,
+            )
             return f"wsl exit_code={completed.returncode}\n{(completed.stdout or '')}{(completed.stderr or '')}".strip()
+
         return "Static-only job prepared; no candidate code was executed."
 
     def list(self) -> list[LabJob]:
@@ -158,7 +180,10 @@ class AdaptiveLab:
         for path in sorted(self.root.glob("*/job.json"), reverse=True):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                output.append(LabJob(data["job_id"], data["candidate"], data["backend"], data["created_at"], str(path.parent), data.get("status", "prepared")))
+                output.append(LabJob(
+                    data["job_id"], data["candidate"], data["backend"], data["created_at"],
+                    str(path.parent), data.get("status", "prepared"),
+                ))
             except Exception:
                 continue
         return output
