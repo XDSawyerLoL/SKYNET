@@ -17,6 +17,7 @@ Current milestone: **V0.8 — Trust & Resilience**
 - Signed, tamper-evident **candidate validation reports** bound to SKYNET's local identity.
 - **Failure-derived regression suite** built from real historical failed trajectories; replays are analysis-only and never use tools.
 - Verified portable state backup/import with SHA-256 file manifests.
+- Consistent snapshots of live SQLite databases during backup.
 - Full-identity backup protected with **Windows DPAPI** for the same Windows user profile.
 - Opt-in Windows startup for the supervisor; SKYNET never installs persistence by itself.
 
@@ -141,13 +142,16 @@ Portable backup, suitable for moving non-secret SKYNET state to another machine:
 .\.venv\Scripts\skynet-trust.exe backup-portable
 ```
 
-Portable backups intentionally **exclude `identity.key`**. On another installation, the imported state gets the destination SKYNET identity.
+Portable backups intentionally **exclude `identity.key`**. On another installation, the imported state gets the destination SKYNET identity. SQLite state is snapshotted through SQLite's backup mechanism rather than by blindly copying an open database file.
 
-Restore:
+Before any restore, engage the global kill-switch and close the Desktop/worker so restored state is not concurrently modified:
 
 ```powershell
+.\.venv\Scripts\skynet-trust.exe kill "restore maintenance"
 .\.venv\Scripts\skynet-trust.exe restore-portable <archive.zip>
 ```
+
+The restore command refuses to run if the global kill-switch is not engaged. Review the restored state before explicitly rearming SKYNET.
 
 A full backup including identity can be protected with Windows DPAPI:
 
