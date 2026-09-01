@@ -19,6 +19,19 @@ DEFAULT_POLICY: dict[str, PermissionLevel] = {
     "remember": PermissionLevel.SAFE,
     "list_skills": PermissionLevel.OBSERVE,
     "read_skill": PermissionLevel.OBSERVE,
+    "save_skill": PermissionLevel.CONFIRM,
+    "create_plan": PermissionLevel.SAFE,
+    "update_plan": PermissionLevel.SAFE,
+    "windows_list": PermissionLevel.OBSERVE,
+    "windows_accessibility": PermissionLevel.OBSERVE,
+    "windows_focus": PermissionLevel.CONFIRM,
+    "windows_invoke": PermissionLevel.CONFIRM,
+    "windows_type": PermissionLevel.CONFIRM,
+    "windows_screenshot": PermissionLevel.CONFIRM,
+    "vision_describe": PermissionLevel.OBSERVE,
+    "mcp_list_servers": PermissionLevel.OBSERVE,
+    "mcp_list_tools": PermissionLevel.OBSERVE,
+    "mcp_call": PermissionLevel.CONFIRM,
 }
 
 

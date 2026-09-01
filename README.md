@@ -1,115 +1,125 @@
 # SKYNET
 
-**Sovereign Personal AI for Windows — local-first, model-agnostic, zero mandatory API cost.**
+**Sovereign local-first personal AI for Windows.**
 
-SKYNET is a personal AI operating layer designed to remain useful even if any single model, cloud provider, runtime, or agent framework disappears.
+SKYNET is not a wrapper around one cloud model. The project owns the agent core and treats models, runtimes and connectors as replaceable components.
+
+Current milestone: **V0.2**
 
 ## Principles
 
-- **Local first** — identity, memory, skills and audit history stay on the user's machine by default.
-- **No mandatory paid API** — local models are first-class citizens.
-- **Model agnostic** — Ollama is the first runtime, not a permanent dependency.
-- **Our core** — memory, planning, permissions, skills, orchestration and UI belong to SKYNET.
-- **Replaceable adapters** — models, runtimes, MCP servers, embeddings and vision engines can be swapped.
-- **Learn safely** — successful procedures can become reusable skills, but never silently rewrite the protected core.
-- **Act, then verify** — computer actions must be checked against their expected result.
-- **Permission before risk** — sensitive operations require explicit approval.
-- **Auditable** — every tool action is logged.
+- Local-first and offline-capable.
+- No paid API required.
+- Persistent local memory.
+- Interchangeable local LLMs through Ollama.
+- Explicit permissions for consequential actions.
+- Windows accessibility before blind visual clicking.
+- Optional local vision fallback.
+- MCP as an interchangeable tool protocol.
+- Reusable learned skills stored locally.
+- Structured plans and verification evidence.
+- Audit trail.
+- External components must remain replaceable.
 
-## V0.1 scope
+## V0.2 capabilities
 
-The first milestone intentionally stays small and testable:
+- Local Ollama chat + native tool calling.
+- SQLite persistent memory.
+- Workspace file read/write.
+- Permission-gated PowerShell.
+- Windows visible-window discovery.
+- Windows UI Automation accessibility snapshots.
+- Permission-gated focus / invoke / type actions.
+- Screenshot capture inside the workspace.
+- Optional Ollama multimodal screenshot analysis.
+- Dependency-free MCP stdio client.
+- Local MCP server registry.
+- Persistent Markdown skills.
+- Structured task plans with step evidence.
+- SHA-256 chained local audit log.
 
-1. Talk to a local LLM through Ollama.
-2. Persist conversation memory in SQLite.
-3. Keep model/runtime behind an adapter interface.
-4. Expose a permission-gated tool bus.
-5. Read/write files within an allowed workspace.
-6. Run PowerShell commands with explicit confirmation.
-7. Store reusable local skills as declarative Markdown files.
-8. Record tool actions in an audit log.
+## Install on Windows
 
-The next layers will add Windows Accessibility/UI Automation, MCP, visual fallback, task planning, skill generation/validation, scheduler, notifications and multimodel routing.
-
-## Architecture
-
-```text
-                   SKYNET CORE
-                       |
-        +--------------+---------------+
-        |              |               |
-     Memory         Skills        Permissions
-        |              |               |
-        +--------------+---------------+
-                       |
-                   Tool Bus
-             +---------+---------+
-             |                   |
-          Windows              Files
-          Shell/MCP            Workspace
-             |
-          Perception
-      Accessibility -> Vision
-             |
-         Model Router
-             |
-     Runtime abstraction
-       |       |       |
-    Ollama  llama.cpp  future
-```
-
-## Quick start
-
-### Requirements
+Requirements:
 
 - Windows 10/11
 - Python 3.11+
-- Ollama installed and running
-- A local chat model already pulled in Ollama
-
-### Install
+- Git
+- Ollama
 
 ```powershell
 git clone https://github.com/XDSawyerLoL/SKYNET.git
 cd SKYNET
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+ollama pull qwen3:8b
+.\.venv\Scripts\skynet.exe
 ```
 
-### Configure
+Optional local vision model:
 
 ```powershell
+ollama pull qwen2.5vl:7b
 Copy-Item .env.example .env
 ```
 
-Edit `.env` if your Ollama endpoint or model is different.
+Then set:
 
-### Run
-
-```powershell
-skynet
+```text
+SKYNET_VISION_MODEL=qwen2.5vl:7b
 ```
 
-Or:
+The vision model is optional. Windows accessibility inspection works without it.
 
-```powershell
-python -m skynet
+## Useful commands
+
+```text
+:status
+:memory
+:skills
+:mcp
+:windows
+:quit
 ```
 
 ## Security model
 
-V0.1 uses four conceptual permission levels:
+Read-only inspection is generally allowed automatically. Actions that modify files, type into applications, invoke UI controls, run PowerShell, capture the screen, save skills or call arbitrary MCP tools require confirmation by default.
 
-- `observe` — read-only information.
-- `safe` — low-risk local actions.
-- `confirm` — requires user confirmation.
-- `blocked` — unavailable to the agent.
+Unknown tools are blocked by default.
 
-PowerShell execution is `confirm` by default. File writes are restricted to the configured workspace.
+SKYNET never treats tool/file/web/MCP content as trusted instructions and should never claim success without tool evidence.
 
-## Project status
+See `SECURITY.md` and `docs/V0.2.md`.
 
-**V0.1 — foundation under active development.**
+## Architecture direction
 
-The goal is not to clone Hermes, OpenClaw, OpenComputer or OpenJarvis. SKYNET studies the strongest public ideas in the agent ecosystem, then implements a sovereign architecture where external components remain optional and replaceable.
+```text
+                    SKYNET CORE
+                        |
+       +----------------+----------------+
+       |                |                |
+     Memory           Planner          Skills
+       |                |                |
+       +---------- Permission/Audit ------+
+                        |
+                     Tool Bus
+          +-------------+-------------+
+          |             |             |
+       Windows         MCP          Files/Shell
+          |
+   Accessibility Tree
+          |
+   deterministic action
+          |
+     Vision fallback
+                        |
+                   Model Layer
+                        |
+              Ollama / future runtimes
+```
+
+The long-term goal is a sovereign personal AI whose identity, memory, skills, permissions and operational history survive model changes.
+
+## License
+
+No license has been granted yet. Until a project license is explicitly added, copyright remains with the repository owner.

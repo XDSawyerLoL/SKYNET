@@ -20,9 +20,11 @@ def _load_dotenv(path: Path) -> None:
 class Config:
     ollama_url: str
     model: str
+    vision_model: str | None
     data_dir: Path
     workspace: Path
-    max_tool_rounds: int = 8
+    mcp_config: Path
+    max_tool_rounds: int = 10
 
     @classmethod
     def load(cls, root: Path | None = None) -> "Config":
@@ -30,12 +32,16 @@ class Config:
         _load_dotenv(root / ".env")
         data_dir = (root / os.getenv("SKYNET_DATA_DIR", ".skynet")).resolve()
         workspace = (root / os.getenv("SKYNET_WORKSPACE", "workspace")).resolve()
+        mcp_config = (root / os.getenv("SKYNET_MCP_CONFIG", ".skynet/mcp.json")).resolve()
         data_dir.mkdir(parents=True, exist_ok=True)
         workspace.mkdir(parents=True, exist_ok=True)
+        vision = os.getenv("SKYNET_VISION_MODEL", "").strip() or None
         return cls(
             ollama_url=os.getenv("SKYNET_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
             model=os.getenv("SKYNET_MODEL", "qwen3:8b"),
+            vision_model=vision,
             data_dir=data_dir,
             workspace=workspace,
-            max_tool_rounds=int(os.getenv("SKYNET_MAX_TOOL_ROUNDS", "8")),
+            mcp_config=mcp_config,
+            max_tool_rounds=int(os.getenv("SKYNET_MAX_TOOL_ROUNDS", "10")),
         )
