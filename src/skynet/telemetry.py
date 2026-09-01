@@ -14,6 +14,7 @@ class ModelStats:
     avg_tokens_per_s: float | None
     avg_energy_wh: float | None
     avg_gpu_memory_mb: float | None
+    avg_ram_delta_mb: float | None
 
 
 class ModelTelemetryStore:
@@ -31,9 +32,13 @@ class ModelTelemetryStore:
                 tokens_per_s REAL,
                 energy_wh REAL,
                 gpu_memory_mb REAL,
+                ram_delta_mb REAL,
                 success INTEGER NOT NULL
             )
         """)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(model_telemetry)").fetchall()}
+        if "ram_delta_mb" not in columns:
+            self.db.execute("ALTER TABLE model_telemetry ADD COLUMN ram_delta_mb REAL")
         self.db.commit()
 
     def record(
@@ -44,11 +49,12 @@ class ModelTelemetryStore:
         tokens_per_s: float | None = None,
         energy_wh: float | None = None,
         gpu_memory_mb: float | None = None,
+        ram_delta_mb: float | None = None,
         success: bool = True,
     ) -> None:
         self.db.execute(
-            "INSERT INTO model_telemetry(ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,success) VALUES(?,?,?,?,?,?,?,?)",
-            (time.time(), model, task_class, float(latency_s), tokens_per_s, energy_wh, gpu_memory_mb, 1 if success else 0),
+            "INSERT INTO model_telemetry(ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb,success) VALUES(?,?,?,?,?,?,?,?,?)",
+            (time.time(), model, task_class, float(latency_s), tokens_per_s, energy_wh, gpu_memory_mb, ram_delta_mb, 1 if success else 0),
         )
         self.db.commit()
 
@@ -60,7 +66,7 @@ class ModelTelemetryStore:
             params.append(task_class)
         params.append(max(1, min(limit, 500)))
         rows = self.db.execute(
-            f"SELECT latency_s,tokens_per_s,energy_wh,gpu_memory_mb FROM model_telemetry WHERE {where} ORDER BY id DESC LIMIT ?",
+            f"SELECT latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb FROM model_telemetry WHERE {where} ORDER BY id DESC LIMIT ?",
             tuple(params),
         ).fetchall()
         if not rows:
@@ -77,14 +83,15 @@ class ModelTelemetryStore:
             avg_tokens_per_s=avg(1),
             avg_energy_wh=avg(2),
             avg_gpu_memory_mb=avg(3),
+            avg_ram_delta_mb=avg(4),
         )
 
     def recent(self, limit: int = 30) -> list[dict]:
         rows = self.db.execute(
-            "SELECT ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,success FROM model_telemetry ORDER BY id DESC LIMIT ?",
+            "SELECT ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb,success FROM model_telemetry ORDER BY id DESC LIMIT ?",
             (max(1, min(limit, 200)),),
         ).fetchall()
-        keys = ("ts", "model", "task_class", "latency_s", "tokens_per_s", "energy_wh", "gpu_memory_mb", "success")
+        keys = ("ts", "model", "task_class", "latency_s", "tokens_per_s", "energy_wh", "gpu_memory_mb", "ram_delta_mb", "success")
         return [dict(zip(keys, row)) for row in rows]
 
     def close(self) -> None:
