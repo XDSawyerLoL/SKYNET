@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 import hashlib
 import time
@@ -40,6 +40,9 @@ class ModelRouter:
         self.canary_ratio = 0.20
         self.last_route = RouteDecision(default_model, "default")
         self._clients: dict[str, OllamaClient] = {}
+        self._installed_cache: list[str] | None = None
+        self._installed_cache_at = 0.0
+        self._installed_cache_ttl = 30.0
 
     def configure_deployment(self, model: str | None, status: str | None, canary_ratio: float = 0.20) -> None:
         self.preferred_model = None
@@ -54,11 +57,17 @@ class ModelRouter:
 
     def _client(self, model: str) -> OllamaClient:
         if model not in self._clients:
-            self._clients[model] = OllamaClient(self.base_url, model)
+            self._clients[model] = OllamaClient(self.base_url, model, keep_alive="30m")
         return self._clients[model]
 
-    def list_models(self) -> list[str]:
-        return self._client(self.default_model).list_models()
+    def list_models(self, *, refresh: bool = False) -> list[str]:
+        now = time.monotonic()
+        if not refresh and self._installed_cache is not None and now - self._installed_cache_at < self._installed_cache_ttl:
+            return list(self._installed_cache)
+        models = self._client(self.default_model).list_models()
+        self._installed_cache = list(models)
+        self._installed_cache_at = now
+        return models
 
     @staticmethod
     def _last_user_text(messages: list[dict]) -> str:
@@ -196,13 +205,15 @@ class ModelRouter:
         except Exception:
             pass
 
+    def _installed_or_none(self) -> list[str] | None:
+        try:
+            return self.list_models()
+        except OllamaError:
+            return None
+
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> dict:
         text = self._last_user_text(messages)
-        try:
-            installed = self.list_models()
-        except OllamaError:
-            installed = None
-
+        installed = self._installed_or_none()
         if installed == []:
             raise OllamaError(
                 "Ollama fonctionne mais aucun modèle local n'est installé. "
@@ -231,3 +242,25 @@ class ModelRouter:
             except OllamaError:
                 self._record_run(self.default_model, text, started, before, False)
                 raise
+
+    def chat_stream(self, messages: list[dict], *, num_predict: int = 768) -> Iterator[str]:
+        """Low-latency text-only route for ordinary conversation."""
+
+        text = self._last_user_text(messages)
+        installed = self._installed_or_none()
+        if installed == []:
+            raise OllamaError(
+                "Ollama fonctionne mais aucun modèle local n'est installé. "
+                f"Installe le modèle par défaut avec : ollama pull {self.default_model}"
+            )
+        decision = self.decide(text, installed)
+        self.last_route = decision
+        before = self._resource_snapshot()
+        started = time.perf_counter()
+        success = False
+        try:
+            for token in self._client(decision.model).chat_stream(messages, think=False, num_predict=num_predict):
+                yield token
+            success = True
+        finally:
+            self._record_run(decision.model, text, started, before, success)
