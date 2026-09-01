@@ -14,8 +14,8 @@ class GovernedToolBus:
     """Mandatory policy boundary around all agent tools.
 
     The language model can propose a tool call, but cannot decide whether the
-    mandate permits it. Existing ToolBus permissions remain a second independent
-    enforcement layer. The V0.8 global kill-switch is checked before both.
+    mandate permits it. ToolBus permissions remain a second independent
+    enforcement layer. The global kill-switch is checked before both.
     """
 
     def __init__(
@@ -45,12 +45,12 @@ class GovernedToolBus:
                 "type": "function",
                 "function": {
                     "name": "swarm_analyze",
-                    "description": "Run several independent local specialist agents in parallel, then synthesize their findings. Read-only compute.",
+                    "description": "Run a bounded hierarchical graph of independent local specialist agents, preserve the trace, then synthesize findings. Read-only compute.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "goal": {"type": "string"},
-                            "roles": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
+                            "roles": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
                         },
                         "required": ["goal"],
                     },
@@ -60,17 +60,32 @@ class GovernedToolBus:
 
     @staticmethod
     def _target(name: str, args: dict[str, Any]) -> str:
-        for key in ("path", "server", "title", "target", "tool"):
+        for key in ("path", "server", "title", "target", "tool", "url", "selector", "query"):
             if key in args and args[key] not in (None, ""):
-                return str(args[key])
+                return str(args[key])[:1000]
         return "local"
 
     @staticmethod
     def _risk(name: str) -> int:
-        if name in {"list_files", "read_file", "remember", "list_skills", "read_skill", "windows_list", "windows_accessibility", "vision_describe", "mcp_list_servers", "mcp_list_tools", "swarm_analyze", "create_plan", "update_plan"}:
+        observe = {
+            "list_files", "read_file", "remember", "list_skills", "read_skill", "windows_list",
+            "windows_accessibility", "vision_describe", "mcp_list_servers", "mcp_list_tools", "swarm_analyze",
+            "create_plan", "update_plan", "session_list", "session_search", "integration_list",
+            "integration_capabilities", "browser_snapshot", "dev_doctor", "dev_tree", "dev_git_status",
+            "dev_git_diff", "dev_search",
+        }
+        moderate = {
+            "windows_focus", "windows_type", "windows_invoke", "windows_screenshot", "write_file", "save_skill",
+            "browser_back", "browser_click", "browser_type", "browser_screenshot",
+        }
+        if name in observe:
             return 5
-        if name in {"windows_focus", "windows_type", "windows_invoke", "windows_screenshot", "write_file", "save_skill"}:
+        if name == "browser_navigate":
+            return 15
+        if name in moderate:
             return 35
+        if name == "dev_run_tests":
+            return 50
         if name in {"powershell", "mcp_call"}:
             return 60
         return 75
