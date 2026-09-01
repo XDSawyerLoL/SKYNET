@@ -15,7 +15,7 @@ dependencies = [
 
 [project.scripts]
 skynet = "skynet.cli:main"
-skynet-desktop = "skynet.desktop_chat:main"
+skynet-desktop = "skynet.desktop_chat_launch:main"
 skynet-desktop-command = "skynet.desktop_qt:main"
 skynet-desktop-hud = "skynet.desktop_premium:main"
 skynet-desktop-classic = "skynet.desktop:main"
