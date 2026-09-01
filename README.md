@@ -4,43 +4,147 @@
 
 SKYNET owns the agent core and treats models, runtimes, connectors, payment rails and external authorization systems as replaceable adapters. No paid API is required for the default setup.
 
-Current milestone: **V0.5 — Measured Evolution**
+Current milestone: **V0.6 — Isolated Evolution**
 
-## What V0.5 adds
+## What V0.6 adds
 
-- Objective local benchmark suite for configured Ollama models.
-- Scorecards persisted locally in SQLite.
-- Promotion only when a candidate beats the baseline without pass-rate or safety regression.
-- Deterministic canary routing for a bounded percentage of real prompts.
-- Explicit canary acceptance before a candidate becomes preferred.
-- Atomic local rollback to the previous model deployment.
-- Trajectory mining for repeated successful task patterns.
-- Signed, time-bounded capability leases for delegated agents.
-- Capability call budgets, expiry, revocation and mandate binding.
-- Desktop evolution status plus CLI evolution controls.
+- Deterministic **plan-level Risk Budget Engine**.
+- Local **Red Team Suite** for self-approval, secret exfiltration, prompt injection and false-success behavior.
+- Isolated **Candidate Sandbox** for proposed improvements; V0.6 does not execute candidate core code on the host.
+- Local **Adaptation Pipeline** that exports high-reward trajectories as JSONL for future LoRA/adapters.
+- Secret/token scrubbing before adaptation data is written.
+- Immutable first **baseline manifest** for future model adaptation comparisons.
+- Dedicated `skynet-evolve` console, separate from normal chat/autonomy.
 
-V0.5 builds on V0.4:
+V0.6 builds on V0.5:
 
-- Canonical SKYNET Mandate.
-- Deterministic Policy Engine.
-- Independent PermissionGate.
-- Signed SHA-256 hash-chained receipts.
-- ERC-8196 / AP2 / OAuth policy projections.
-- Parallel bounded local swarms.
-- Semantic local memory.
-- Persistent success/failure trajectories.
-- A2A-ready agent cards and task envelopes.
-- Windows UI Automation + optional local vision.
-- MCP, skills, routines, checkpoints and multi-model Ollama routing.
+- objective local model tournaments and scorecards;
+- deterministic 20% canary routing;
+- accept/rollback model deployments;
+- trajectory mining;
+- signed time-bounded capability leases;
+- canonical Mandates + deterministic Policy Engine + PermissionGate;
+- signed hash-chained receipts and ERC-8196/AP2/OAuth projections;
+- bounded local swarms, semantic memory, A2A-ready agent cards;
+- Windows UI Automation, optional local vision, MCP, skills, routines and checkpoints.
 
-## Core doctrine
+## Evolution doctrine
+
+```text
+real task
+   ↓
+trajectory + evidence
+   ↓
+repeated successful pattern
+   ↓
+candidate improvement
+   ↓
+Candidate Sandbox
+   ↓
+static checks + Red Team
+   ↓
+objective benchmark
+   ↓
+canary
+   ↓
+accept OR rollback
+```
+
+For future model adaptation:
+
+```text
+high-reward trajectories
+        ↓
+secret scrubber
+        ↓
+local JSONL dataset
+        ↓
+external/local LoRA trainer (not automatic in V0.6)
+        ↓
+new model candidate
+        ↓
+red-team + benchmark + canary + rollback
+```
+
+The agent may propose improvements. It cannot silently execute candidate core code, replace the immutable baseline, bypass the Red Team gate, or grant itself new permissions.
+
+## Risk budgeting
+
+SKYNET scores the **whole plan**, not only individual tool calls. High-risk concepts such as credentials, wallet/payment actions, registry changes, elevation, uploads and deletion accumulate risk. The risk engine is deterministic and independent from the LLM.
+
+```powershell
+.\.venv\Scripts\skynet-evolve.exe risk-plan <plan_id>
+```
+
+Tool execution still separately crosses the canonical Mandate, Policy Engine and PermissionGate.
+
+## Red-team a local model
+
+```powershell
+.\.venv\Scripts\skynet-evolve.exe redteam
+```
+
+Or test a specific installed Ollama model:
+
+```powershell
+.\.venv\Scripts\skynet-evolve.exe redteam qwen3:8b
+```
+
+## Immutable adaptation baseline
+
+After generating model scorecards:
+
+```powershell
+.\.venv\Scripts\skynet-evolve.exe freeze-baseline
+```
+
+The first baseline manifest is preserved. Re-running the command does not silently replace it.
+
+Export a local training dataset from successful trajectories:
+
+```powershell
+.\.venv\Scripts\skynet-evolve.exe lora-export
+```
+
+The export is preparation only. **V0.6 does not autonomously fine-tune or install a model.**
+
+## Candidate sandbox
+
+```powershell
+.\.venv\Scripts\skynet-evolve.exe sandbox-stage candidate-1 skill .\proposal.md
+.\.venv\Scripts\skynet-evolve.exe sandbox-list
+```
+
+Artifacts are stored under `.skynet/candidate-sandbox/` with SHA-256 manifests and cannot escape that directory through their candidate name.
+
+## Model evolution from V0.5
+
+Configure multiple local models:
+
+```text
+SKYNET_MODEL=qwen3:8b
+SKYNET_MODELS=qwen3:8b,qwen2.5-coder:7b
+```
+
+Inside the main CLI:
+
+```text
+:tournament
+:deployments
+:accept-canary
+:rollback-model
+:scorecards
+:learning-proposals
+```
+
+A new model must beat the baseline without safety/pass-rate regression before canary promotion.
+
+## Governed execution
 
 ```text
 User Intent
     ↓
-Agent reasoning
-    ↓
-Action proposal
+Reasoning / planning
     ↓
 Canonical Mandate
     ↓
@@ -51,178 +155,21 @@ PermissionGate
 Execution
     ↓
 Evidence + signed Receipt
-    ↓
-Trajectory
-    ↓
-Evaluation
-    ↓
-Candidate improvement
-    ↓
-Objective benchmark
-    ↓
-Canary
-    ↓
-Accept OR Rollback
 ```
 
-The model may propose actions and improvements. It cannot approve its own permissions or promote itself without measured evidence and explicit promotion boundaries.
-
-## Sovereignty rules
-
-1. Models are replaceable.
-2. Memory, trajectories, skills, policies, receipts, scorecards and deployment state stay local by default.
-3. No cloud API is required for core operation.
-4. Every tool call crosses deterministic policy enforcement.
-5. Sensitive tools remain independently permission-gated.
-6. Unattended execution cannot grant itself extra permissions.
-7. Learned procedures remain candidates until validated/promoted.
-8. External protocols remain adapters, never SKYNET's source of truth.
-9. A new model must beat the baseline before canary promotion.
-10. A canary can always be rolled back locally.
-
-## Measured model evolution
-
-Configure more than one installed Ollama model:
-
-```text
-SKYNET_MODEL=qwen3:8b
-SKYNET_MODELS=qwen3:8b,qwen2.5-coder:7b
-```
-
-Run:
-
-```text
-:tournament
-```
-
-SKYNET runs the same deterministic local evaluation suite across configured models. No external LLM judge is required.
-
-If an alternate candidate exceeds the baseline threshold with no safety/pass-rate regression, SKYNET can offer a **20% deterministic canary**. The same prompt always lands in the same canary bucket.
-
-```text
-:tournament
-:deployments
-:accept-canary
-:rollback-model
-:scorecards
-```
-
-A deployment lifecycle is:
-
-```text
-baseline
-   ↓
-objective benchmark
-   ↓
-measured candidate
-   ↓
-20% canary
-   ↓
-observe
-  ↙   ↘
-accept rollback
-   ↓      ↓
-preferred previous
-```
-
-## Trajectory learning
-
-Every successful or failed agent task can become local evidence.
-
-```text
-trajectory
-   ↓
-reward/outcome
-   ↓
-repeated successful pattern
-   ↓
-learning proposal
-   ↓
-future skill/model adaptation candidate
-```
-
-Use:
-
-```text
-:trajectories
-:learning-proposals
-```
-
-V0.5 **does not silently fine-tune itself**. Training adapters/LoRAs remains a future isolated step that must be benchmarked and rollback-capable.
-
-## Delegated agent capability leases
-
-Future A2A-style agents should not inherit SKYNET's authority. V0.5 can issue a signed local lease containing:
-
-- target agent identity;
-- exact delegated capabilities;
-- current mandate hash;
-- expiration;
-- maximum call budget;
-- local signature;
-- revocation state.
-
-Use:
-
-```text
-:leases
-:lease-issue
-```
-
-This primitive can later be adapted to A2A credentials, OAuth delegation or wallet-policy systems without replacing SKYNET's local authorization model.
-
-## Policy adapters
+External standards remain adapters, not SKYNET's source of truth:
 
 ```text
 SKYNET Mandate
-     │
-     ├── ERC-8196 projection
-     ├── AP2 constraint projection
-     ├── OAuth delegated-scope projection
-     └── future adapters (x402 / enterprise policy / others)
-```
-
-Use:
-
-```text
-:policy
-:policy-erc8196
-:policy-ap2
-:policy-oauth
-:receipts
-:verify-receipts
-```
-
-## Parallel local swarm
-
-```text
-Goal
- ├─ planner
- ├─ analyst
- ├─ critic
- ├─ security
- ├─ verifier
- └─ innovator
-      ↓
-parallel local inference
-      ↓
-evidence-preserving synthesis
-```
-
-Run:
-
-```text
-:swarm Analyse ce problème et cherche les faiblesses du plan
+ ├─ ERC-8196 projection
+ ├─ AP2 projection
+ ├─ OAuth delegated scopes
+ └─ future x402 / A2A / enterprise adapters
 ```
 
 ## Install on Windows
 
-Requirements:
-
-- Windows 10/11
-- Python 3.11+
-- Git
-- Ollama
+Requirements: Windows 10/11, Python 3.11+, Git and Ollama.
 
 ```powershell
 git clone https://github.com/XDSawyerLoL/SKYNET.git
@@ -249,41 +196,23 @@ Launch autonomy worker:
 .\.venv\Scripts\skynet-worker.exe
 ```
 
-## Optional local embeddings and vision
+Evolution/security console:
 
-```text
-SKYNET_EMBED_MODEL=nomic-embed-text
-SKYNET_VISION_MODEL=qwen2.5vl:7b
+```powershell
+.\.venv\Scripts\skynet-evolve.exe status
 ```
 
-Without an embedding model, semantic memory falls back to a dependency-free hashed local vectorizer. Windows accessibility remains preferred before vision.
+## Sovereignty rules
 
-## Main V0.5 CLI commands
+1. Models are replaceable.
+2. Core memory, trajectories, policies, receipts, scorecards and deployment state remain local by default.
+3. No cloud API is required for core operation.
+4. The LLM never decides whether its own consequential action is authorized.
+5. Improvements are candidates before they become trusted.
+6. Candidate core code is not executed directly on the host by V0.6.
+7. Adaptation data is scrubbed for common secret/token patterns.
+8. A baseline cannot be silently replaced.
+9. Model promotion requires measured evidence and remains rollback-capable.
+10. External protocols are adapters, never the sovereign internal source of truth.
 
-```text
-:status
-:tournament
-:scorecards
-:learning-proposals
-:deployments
-:accept-canary
-:rollback-model
-:leases
-:lease-issue
-:identity
-:policy
-:receipts
-:verify-receipts
-:semantic <query>
-:trajectories
-:agents
-:swarm <goal>
-```
-
-Existing memory, skills, routines, checkpoints, MCP and Windows commands remain available.
-
-## Data
-
-Runtime state lives under `.skynet/` by default and is ignored by Git. The workspace is `workspace/` by default.
-
-See `docs/V0.5.md` for the architecture and forward roadmap.
+Runtime data lives under `.skynet/` by default. See `docs/V0.6.md` for the milestone architecture.
