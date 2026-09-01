@@ -94,9 +94,12 @@ class ModelRouter:
             return None
 
     def decide(self, text: str, installed: list[str] | None = None) -> RouteDecision:
-        available = set(installed or self.candidates)
+        available = set(self.candidates if installed is None else installed)
         choices = [m for m in self.candidates if m in available]
         if not choices:
+            if installed:
+                fallback = installed[0]
+                return RouteDecision(fallback, "fallback: locally installed Ollama model")
             return RouteDecision(self.default_model, "fallback: configured default")
 
         if self.canary_model in available and self._in_canary_bucket(text):
@@ -198,7 +201,14 @@ class ModelRouter:
         try:
             installed = self.list_models()
         except OllamaError:
-            installed = self.candidates
+            installed = None
+
+        if installed == []:
+            raise OllamaError(
+                "Ollama fonctionne mais aucun modèle local n'est installé. "
+                f"Installe le modèle par défaut avec : ollama pull {self.default_model}"
+            )
+
         decision = self.decide(text, installed)
         self.last_route = decision
         before = self._resource_snapshot()
