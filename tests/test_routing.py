@@ -21,6 +21,12 @@ class ModelRouterTests(unittest.TestCase):
         decision = router.decide("analyse cette situation", ["qwen3:8b"])
         self.assertEqual(decision.model, "qwen3:8b")
 
+    def test_unconfigured_installed_model_is_used_as_local_fallback(self):
+        router = ModelRouter("http://127.0.0.1:11434", "qwen3:8b", ["qwen3:8b"])
+        decision = router.decide("bonjour", ["gemma3:4b"])
+        self.assertEqual(decision.model, "gemma3:4b")
+        self.assertIn("locally installed", decision.reason)
+
     def test_measured_preferred_model_wins_general_task(self):
         router = ModelRouter("http://127.0.0.1:11434", "base:8b", ["base:8b", "candidate:8b"])
         router.configure_deployment("candidate:8b", "active")
