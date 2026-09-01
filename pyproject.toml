@@ -4,16 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skynet-local-ai"
-version = "0.10.1"
-description = "Sovereign local-first personal AI with premium command-center UX, accelerated reality simulation, product-grade sessions, integrations, browser, skills, multi-agent orchestration and resilience"
+version = "0.11.0"
+description = "Sovereign local-first personal AI with GNOME-inspired Qt Presence UX, local voice, accelerated reality simulation, product-grade sessions, integrations, browser, skills, multi-agent orchestration and resilience"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "SKYNET Project"}]
-dependencies = []
+dependencies = [
+    "PySide6>=6.8,<7",
+]
 
 [project.scripts]
 skynet = "skynet.cli:main"
-skynet-desktop = "skynet.desktop_premium:main"
+skynet-desktop = "skynet.desktop_qt:main"
+skynet-desktop-hud = "skynet.desktop_premium:main"
 skynet-desktop-classic = "skynet.desktop:main"
 skynet-worker = "skynet.worker:main"
 skynet-evolve = "skynet.evolve_cli:main"
