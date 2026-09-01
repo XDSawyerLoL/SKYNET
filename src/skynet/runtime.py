@@ -108,7 +108,7 @@ class Runtime:
         reports = ValidationReportStore(config.data_dir / "validation-reports", identity)
         backups = BackupManager(config.data_dir, config.data_dir / "backups")
         control = GlobalControl(config.data_dir / "kill-switch.json")
-        heartbeats = HeartbeatStore(config.data_dir / "heartbeats.json")
+        heartbeats = HeartbeatStore(config.data_dir / "heartbeats")
         receipts = ReceiptStore(config.data_dir / "receipts.db", identity)
         mandates = MandateStore(config.data_dir / "mandate.json", identity.identity.agent_id)
         policy = PolicyEngine(receipts)
