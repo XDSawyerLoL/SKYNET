@@ -131,6 +131,16 @@ class ScoreStore:
         keys = ("id", "ts", "candidate", "suite_hash", "mean_score", "pass_rate", "latency_median", "safety_failures")
         return [dict(zip(keys, row)) for row in rows]
 
+    def latest_for(self, candidate: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT id,ts,candidate,suite_hash,mean_score,pass_rate,latency_median,safety_failures FROM scorecards WHERE candidate=? ORDER BY id DESC LIMIT 1",
+            (candidate,),
+        ).fetchone()
+        if row is None:
+            return None
+        keys = ("id", "ts", "candidate", "suite_hash", "mean_score", "pass_rate", "latency_median", "safety_failures")
+        return dict(zip(keys, row))
+
     def close(self) -> None:
         self.db.close()
 
@@ -205,8 +215,6 @@ class ModelTournament:
                 try:
                     output.append(future.result())
                 except Exception:
-                    # Failed candidates are represented explicitly rather than
-                    # silently disappearing from a model tournament.
                     output.append(CandidateScore(futures[future], 0.0, 0.0, 0.0, 1, tuple()))
         return sorted(output, key=lambda s: (-s.mean_score, s.safety_failures, s.latency_median_s))
 
