@@ -1,43 +1,68 @@
 $ErrorActionPreference = 'Stop'
 
-Write-Host 'SKYNET - installation de la voix premium locale' -ForegroundColor Cyan
+Write-Host 'SKYNET - installation voix premium locale' -ForegroundColor Cyan
 
-$python = '.\.venv\Scripts\python.exe'
-if (-not (Test-Path $python)) {
+$basePython = '.\.venv\Scripts\python.exe'
+if (-not (Test-Path $basePython)) {
     throw 'Environnement SKYNET introuvable. Lancez install.ps1 avant.'
 }
 
-Write-Host 'Installation de Chatterbox Multilingual...' -ForegroundColor Cyan
-& $python -m pip install --upgrade chatterbox-tts sounddevice
-
 $voiceDir = Join-Path (Get-Location) '.skynet\voice'
+$voiceVenv = Join-Path $voiceDir 'venv'
+$voicePython = Join-Path $voiceVenv 'Scripts\python.exe'
+$marker = Join-Path $voiceDir 'chatterbox.enabled'
+$worker = Join-Path (Get-Location) 'src\skynet\voice_worker.py'
+
 New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
+Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
 
-Write-Host 'Préchargement du modèle multilingue V3. Le premier téléchargement peut être volumineux...' -ForegroundColor Cyan
-$prewarm = @'
-import torch
-from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-
-device = "cpu"
-print("Téléchargement / validation du modèle Chatterbox Multilingual V3...")
-model = ChatterboxMultilingualTTS.from_pretrained(device=device, t3_model="v3")
-print(f"Modèle prêt. Fréquence audio: {model.sr} Hz")
-'@
-$tempPy = Join-Path $env:TEMP ('skynet-chatterbox-' + [guid]::NewGuid().ToString('N') + '.py')
-Set-Content -LiteralPath $tempPy -Value $prewarm -Encoding UTF8
-try {
-    & $python $tempPy
-}
-finally {
-    Remove-Item -LiteralPath $tempPy -Force -ErrorAction SilentlyContinue
+if (-not (Test-Path $worker)) {
+    throw 'voice_worker.py introuvable. Lancez update.ps1 puis recommencez.'
 }
 
-Set-Content -LiteralPath (Join-Path $voiceDir 'chatterbox.enabled') -Value 'enabled' -Encoding ASCII
+Write-Host 'Installation des composants audio legers dans le coeur SKYNET...'
+& $basePython -m pip install --upgrade sounddevice soundfile
+if ($LASTEXITCODE -ne 0) { throw 'Echec installation composants audio de base.' }
+
+Write-Host 'Creation d un environnement vocal ISOLE...' -ForegroundColor Cyan
+if (Test-Path $voiceVenv) {
+    Remove-Item -LiteralPath $voiceVenv -Recurse -Force
+}
+& $basePython -m venv $voiceVenv
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $voicePython)) {
+    throw 'Impossible de creer l environnement vocal isole.'
+}
+
+& $voicePython -m pip install --upgrade pip setuptools wheel
+if ($LASTEXITCODE -ne 0) { throw 'Echec mise a niveau pip vocal.' }
+
+Write-Host 'Installation de Chatterbox Multilingual depuis la version officielle actuelle...' -ForegroundColor Cyan
+& $voicePython -m pip install --upgrade 'https://github.com/resemble-ai/chatterbox/archive/refs/heads/master.zip' soundfile
+if ($LASTEXITCODE -ne 0) {
+    throw 'Echec installation Chatterbox. Le coeur SKYNET reste intact.'
+}
+
+Write-Host 'Verification des dependances du moteur vocal...'
+& $voicePython -m pip check
+if ($LASTEXITCODE -ne 0) {
+    throw 'Conflit detecte dans l environnement vocal isole. Activation annulee.'
+}
+
+Write-Host 'Prechargement et validation REELLE du modele premium...' -ForegroundColor Cyan
+$env:PYTHONUTF8 = '1'
+& $voicePython $worker --prewarm
+if ($LASTEXITCODE -ne 0) {
+    Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+    throw 'Le modele premium n a pas passe le prechargement. Il NE sera pas marque comme actif.'
+}
+
+Set-Content -LiteralPath $marker -Value 'enabled' -Encoding ASCII
 
 Write-Host ''
-Write-Host 'Voix premium activée.' -ForegroundColor Green
-Write-Host 'Moteur: Chatterbox Multilingual V3'
-Write-Host 'Langue: français'
-Write-Host 'Le moteur choisira le GPU seulement si suffisamment de VRAM est libre; sinon il utilisera le CPU.'
+Write-Host 'Voix premium correctement activee.' -ForegroundColor Green
+Write-Host 'Moteur : Chatterbox Multilingual V3 (si supporte par la version officielle)'
+Write-Host 'Langue : francais'
+Write-Host 'Isolation : .skynet\voice\venv'
+Write-Host 'Le modele reste charge pendant la session SKYNET pour reduire la latence.'
 Write-Host ''
-Write-Host 'Test: .\.venv\Scripts\skynet-voice.exe test'
+Write-Host 'Test : .\.venv\Scripts\skynet-voice.exe test'
