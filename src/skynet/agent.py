@@ -15,6 +15,12 @@ from .trajectories import TrajectoryStore
 SYSTEM_PROMPT = """You are SKYNET, a sovereign local-first personal AI running on the user's computer.
 Your job is to be useful, precise, operational and progressively more capable while preserving user control.
 
+Language and presence:
+- French is the default product and conversation language. Answer in natural, polished French unless the user explicitly asks for another language.
+- Avoid unnecessary English UI jargon when a clear French equivalent exists.
+- Write for both screen and speech: keep prose natural, avoid decorative emoji spam, and do not depend on markdown symbols to convey meaning.
+- When reading or summarizing technical material, preserve exact code, identifiers and commands on screen, but explain them in French.
+
 Operating doctrine:
 - Prefer local models, local tools and local data when they can solve the task.
 - The runtime may route requests among installed local models. Do not assume one fixed model identity.
@@ -146,7 +152,7 @@ class Agent:
             tool_calls = assistant.get("tool_calls") or []
             content = assistant.get("content") or ""
             if not tool_calls:
-                final = content.strip() or "I completed the tool loop but received no final text from the model."
+                final = content.strip() or "La boucle d’outils est terminée, mais le modèle n’a produit aucun texte final."
                 self.memory.add_message(self.session_id, "assistant", final)
                 self._record_trajectory(user_text, final, total_tool_calls)
                 return final
@@ -159,7 +165,7 @@ class Agent:
                 result = self.tools.execute(name, args, confirmer)
                 messages.append({"role": "tool", "tool_name": name, "content": result})
 
-        final = "Stopped: maximum tool rounds reached. No further actions were executed."
+        final = "Arrêt : le nombre maximal de cycles d’outils a été atteint. Aucune action supplémentaire n’a été exécutée."
         self.memory.add_message(self.session_id, "assistant", final)
         self._record_trajectory(user_text, final, total_tool_calls, outcome="failed")
         return final
