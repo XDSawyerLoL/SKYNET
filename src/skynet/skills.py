@@ -24,7 +24,12 @@ class SkillMatch:
 
 
 class SkillStore:
-    """Progressive-disclosure local skill library with thread-safe usage evidence."""
+    """Progressive-disclosure local skill library with lazy usage persistence.
+
+    The usage database opens only when relevance/usage evidence is requested.
+    This preserves the lightweight lifecycle of older callers that only validate
+    or stage a skill and never needed an open database handle.
+    """
 
     def __init__(self, path: Path, external_paths: list[Path] | None = None) -> None:
         self.path = path
@@ -35,19 +40,25 @@ class SkillStore:
         env_paths = [Path(x) for x in os.getenv("SKYNET_SKILL_DIRS", "").split(os.pathsep) if x.strip()]
         self.external_paths = [p.expanduser().resolve() for p in (external_paths or env_paths) if p.expanduser().exists()]
         self.lock = threading.RLock()
-        self.stats = sqlite3.connect(path.parent / "skill-usage.db", timeout=10, check_same_thread=False)
+        self.stats_path = path.parent / "skill-usage.db"
+        self._stats: sqlite3.Connection | None = None
+
+    def _stats_db(self) -> sqlite3.Connection:
         with self.lock:
-            self.stats.execute(
-                """
-                CREATE TABLE IF NOT EXISTS skill_usage (
-                    name TEXT PRIMARY KEY,
-                    uses INTEGER NOT NULL DEFAULT 0,
-                    successes INTEGER NOT NULL DEFAULT 0,
-                    last_used REAL
+            if self._stats is None:
+                self._stats = sqlite3.connect(self.stats_path, timeout=10, check_same_thread=False)
+                self._stats.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS skill_usage (
+                        name TEXT PRIMARY KEY,
+                        uses INTEGER NOT NULL DEFAULT 0,
+                        successes INTEGER NOT NULL DEFAULT 0,
+                        last_used REAL
+                    )
+                    """
                 )
-                """
-            )
-            self.stats.commit()
+                self._stats.commit()
+            return self._stats
 
     @staticmethod
     def _normalize(name: str) -> str:
@@ -117,7 +128,7 @@ class SkillStore:
 
     def _usage(self, name: str) -> tuple[int, int]:
         with self.lock:
-            row = self.stats.execute("SELECT uses,successes FROM skill_usage WHERE name=?", (name,)).fetchone()
+            row = self._stats_db().execute("SELECT uses,successes FROM skill_usage WHERE name=?", (name,)).fetchone()
         return (0, 0) if row is None else (int(row[0]), int(row[1]))
 
     def search(self, query: str, limit: int = 5) -> list[SkillMatch]:
@@ -137,13 +148,14 @@ class SkillStore:
     def mark_used(self, name: str, success: bool | None = None) -> None:
         clean = self._normalize(name)
         with self.lock:
-            row = self.stats.execute("SELECT uses,successes FROM skill_usage WHERE name=?", (clean,)).fetchone()
+            db = self._stats_db()
+            row = db.execute("SELECT uses,successes FROM skill_usage WHERE name=?", (clean,)).fetchone()
             uses, successes = (0, 0) if row is None else (int(row[0]), int(row[1]))
-            self.stats.execute(
+            db.execute(
                 "INSERT OR REPLACE INTO skill_usage(name,uses,successes,last_used) VALUES(?,?,?,?)",
                 (clean, uses + 1, successes + (1 if success is True else 0), time.time()),
             )
-            self.stats.commit()
+            db.commit()
 
     def context_for(self, query: str, limit: int = 3, max_chars: int = 12_000) -> list[tuple[str, str]]:
         output: list[tuple[str, str]] = []; remaining = max(1000, max_chars)
@@ -156,11 +168,13 @@ class SkillStore:
 
     def usage(self, limit: int = 50) -> list[dict]:
         with self.lock:
-            rows = self.stats.execute(
+            rows = self._stats_db().execute(
                 "SELECT name,uses,successes,last_used FROM skill_usage ORDER BY uses DESC,last_used DESC LIMIT ?",
                 (max(1, min(limit, 500)),),
             ).fetchall()
         return [{"name": str(r[0]), "uses": int(r[1]), "successes": int(r[2]), "last_used": r[3]} for r in rows]
 
     def close(self) -> None:
-        with self.lock: self.stats.close()
+        with self.lock:
+            if self._stats is not None:
+                self._stats.close(); self._stats = None
