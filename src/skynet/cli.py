@@ -9,8 +9,8 @@ from .policy_adapters import AP2ConstraintAdapter, ERC8196Adapter, OAuthScopeAda
 from .runtime import Runtime
 
 
-BANNER = """\nSKYNET v0.5 — Measured Evolution
-Governed execution • Objective evals • Canary promotion • Rollback • Capability leases
+BANNER = """\nSKYNET v0.8 — Trust & Resilience
+Governed execution • Adaptive Lab • Global kill-switch • Signed validation • Recovery supervisor
 Type :help for commands.
 """
 
@@ -28,6 +28,7 @@ def _status(runtime: Runtime) -> None:
     deployed = runtime.deployments.get("reasoning-model")
     print(f"Agent ID:      {runtime.identity.identity.agent_id}")
     print(f"Policy hash:   {mandate.policy_hash[:20]}…")
+    print(f"Kill switch:   {'ENGAGED' if runtime.control.engaged() else 'clear'}")
     print(f"Default model: {config.model}")
     print(f"Model pool:    {', '.join(config.models)}")
     if deployed:
@@ -43,6 +44,10 @@ def _status(runtime: Runtime) -> None:
     print(f"Data:          {config.data_dir}")
     print(f"MCP config:    {config.mcp_config}")
     print(f"Autonomy poll: {config.autonomy_poll_seconds}s")
+    worker = runtime.heartbeats.get("worker")
+    supervisor = runtime.heartbeats.get("supervisor")
+    print(f"Worker HB:     {worker.state if worker else '<none>'}")
+    print(f"Supervisor HB: {supervisor.state if supervisor else '<none>'}")
     servers = runtime.mcp.list_servers()
     print("MCP servers:   " + (", ".join(servers) if servers else "<none>"))
     try:
@@ -54,6 +59,9 @@ def _status(runtime: Runtime) -> None:
 
 def _help() -> None:
     print(":status                         Show runtime status")
+    print(":kill [reason]                  Engage global kill-switch")
+    print(":rearm                          Explicitly release global kill-switch")
+    print(":validation-reports             Show signed candidate validation reports")
     print(":tournament                     Benchmark configured local models objectively")
     print(":scorecards                     Show recent benchmark scorecards")
     print(":learning-proposals             Mine repeated successful trajectories")
@@ -171,6 +179,19 @@ def main() -> None:
                 _help(); continue
             if text == ":status":
                 _status(runtime); continue
+            if text == ":kill" or text.startswith(":kill "):
+                reason = text.split(maxsplit=1)[1] if " " in text else "CLI emergency stop"
+                runtime.control.engage(reason)
+                print("GLOBAL KILL SWITCH ENGAGED")
+                continue
+            if text == ":rearm":
+                if _confirm("Explicitly release the global kill-switch? Normal mandates and permissions remain active."):
+                    runtime.control.release(); print("GLOBAL KILL SWITCH RELEASED")
+                else:
+                    print("Cancelled.")
+                continue
+            if text == ":validation-reports":
+                _json([{**asdict(x), "verified": runtime.reports.verify(x)} for x in runtime.reports.recent(20)]); continue
             if text == ":tournament":
                 try: _run_tournament(runtime)
                 except Exception as exc: print(f"Tournament error: {type(exc).__name__}: {exc}")
@@ -264,6 +285,9 @@ def main() -> None:
             if text == ":routine-add":
                 _add_routine(runtime); continue
             if text == ":routine-run":
+                if runtime.control.engaged():
+                    print("DENIED: global kill-switch engaged")
+                    continue
                 results = runtime.autonomy.run_due()
                 if not results: print("<no due routines>")
                 for routine, status, reply in results: print(f"[{status}] {routine.name}\n{reply}")
