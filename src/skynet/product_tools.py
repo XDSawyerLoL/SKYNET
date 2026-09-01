@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .browser import BrowserHarness
@@ -8,6 +9,9 @@ from .devtools import DeveloperTools
 from .integrations import IntegrationRegistry
 from .sessions import SessionStore
 from .tools import ToolBus
+
+
+_TOOL_SAFE = re.compile(r"[^a-zA-Z0-9_]" )
 
 
 class ProductToolBus(ToolBus):
@@ -20,6 +24,49 @@ class ProductToolBus(ToolBus):
         self.developer = developer
         self.sessions = sessions
         self.integrations = integrations
+        self._dynamic_mcp: dict[str, tuple[str, str]] = {}
+        self._mcp_schema_cache: list[dict[str, Any]] | None = None
+
+    @staticmethod
+    def _safe_tool_part(value: str) -> str:
+        clean = _TOOL_SAFE.sub("_", value.strip())
+        return clean[:80] or "tool"
+
+    def _dynamic_mcp_schemas(self) -> list[dict[str, Any]]:
+        if self.mcp is None:
+            return []
+        if self._mcp_schema_cache is not None:
+            return list(self._mcp_schema_cache)
+        output: list[dict[str, Any]] = []
+        mapping: dict[str, tuple[str, str]] = {}
+        for server in self.mcp.list_servers():
+            try:
+                tools = self.mcp.list_tools(server)
+            except Exception:
+                continue
+            for raw in tools[:200]:
+                if not isinstance(raw, dict) or not isinstance(raw.get("name"), str):
+                    continue
+                remote_name = str(raw["name"])
+                local_name = f"mcp__{self._safe_tool_part(server)}__{self._safe_tool_part(remote_name)}"[:120]
+                if local_name in mapping:
+                    continue
+                schema = raw.get("inputSchema") if isinstance(raw.get("inputSchema"), dict) else {"type": "object", "properties": {}}
+                output.append(self._schema(
+                    local_name,
+                    f"MCP {server}::{remote_name} — {str(raw.get('description', '')).strip()[:1000]}",
+                    schema,
+                ))
+                mapping[local_name] = (server, remote_name)
+        self._dynamic_mcp = mapping
+        self._mcp_schema_cache = output
+        return list(output)
+
+    def refresh_integrations(self) -> None:
+        self._mcp_schema_cache = None
+        self._dynamic_mcp.clear()
+        if self.integrations is not None and self.mcp is not None:
+            self.integrations.discover_mcp(self.mcp.list_servers())
 
     def schemas(self) -> list[dict[str, Any]]:
         schemas = super().schemas()
@@ -81,9 +128,13 @@ class ProductToolBus(ToolBus):
                     "type": "object", "properties": {"timeout": {"type": "integer", "minimum": 10, "maximum": 900}}
                 }),
             ]
+        schemas += self._dynamic_mcp_schemas()
         return schemas
 
     def _summary(self, name: str, args: dict[str, Any]) -> str:
+        if name.startswith("mcp__"):
+            remote = self._dynamic_mcp.get(name)
+            return f"Allow dynamic MCP tool {remote[0]}::{remote[1]}?" if remote else f"Allow MCP tool {name}?"
         if name == "browser_back":
             return "Allow SKYNET to navigate the local browser back?"
         if name == "browser_click":
@@ -97,8 +148,16 @@ class ProductToolBus(ToolBus):
         return super()._summary(name, args)
 
     def _dispatch(self, name: str, args: dict[str, Any]) -> str:
+        if name.startswith("mcp__") and self.mcp is not None:
+            if not self._dynamic_mcp:
+                self._dynamic_mcp_schemas()
+            remote = self._dynamic_mcp.get(name)
+            if remote is None:
+                raise KeyError(f"Unknown dynamic MCP tool: {name}")
+            result = self.mcp.call(remote[0], remote[1], args)
+            return json.dumps(result, ensure_ascii=False)
         if name == "session_list" and self.sessions is not None:
-            return json.dumps([item.__dict__ if hasattr(item, "__dict__") else {
+            return json.dumps([{
                 "session_id": item.session_id, "title": item.title, "project": item.project,
                 "channel": item.channel, "created_at": item.created_at, "updated_at": item.updated_at,
                 "archived": item.archived,
