@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
+import json
 
 from .ollama import OllamaError
+from .policy_adapters import AP2ConstraintAdapter, ERC8196Adapter, OAuthScopeAdapter
 from .runtime import Runtime
 
 
-BANNER = """\nSKYNET v0.3 — Sovereign Local AI
-Local multi-model routing • Persistent memory • Windows control • MCP • Checkpointed autonomy
+BANNER = """\nSKYNET v0.4 — Sovereign Agent Fabric
+Governed execution • Signed receipts • Semantic memory • Parallel swarms • A2A-ready identity
 Type :help for commands.
 """
 
@@ -21,10 +24,15 @@ def _confirm(message: str) -> bool:
 
 def _status(runtime: Runtime) -> None:
     config = runtime.config
+    mandate = runtime.mandates.load()
+    print(f"Agent ID:      {runtime.identity.identity.agent_id}")
+    print(f"Policy hash:   {mandate.policy_hash[:20]}…")
     print(f"Default model: {config.model}")
     print(f"Model pool:    {', '.join(config.models)}")
     print(f"Last route:    {runtime.router.last_route.model} ({runtime.router.last_route.reason})")
     print(f"Vision:        {config.vision_model or '<disabled>'}")
+    print(f"Embeddings:    {config.embed_model or '<hashed local fallback>'}")
+    print(f"Swarm workers: {config.swarm_workers}")
     print(f"Ollama:        {config.ollama_url}")
     print(f"Workspace:     {config.workspace}")
     print(f"Data:          {config.data_dir}")
@@ -41,6 +49,17 @@ def _status(runtime: Runtime) -> None:
 
 def _help() -> None:
     print(":status                         Show runtime status")
+    print(":identity                       Show sovereign local identity")
+    print(":policy                         Show canonical active mandate")
+    print(":policy-erc8196                 Project mandate to ERC-8196 fields")
+    print(":policy-ap2                     Project mandate to AP2-style constraints")
+    print(":policy-oauth                   Project mandate to delegated OAuth scopes")
+    print(":receipts                       Show recent governed action receipts")
+    print(":verify-receipts                Verify the signed hash chain")
+    print(":semantic <query>               Search semantic local memory")
+    print(":trajectories                   Show recent learning trajectories")
+    print(":agents                         Show local/interoperable agent cards")
+    print(":swarm <goal>                   Run parallel local specialist analysis")
     print(":memory                         Show durable memories")
     print(":skills                         Show approved skills")
     print(":skill-candidates                Show learned skill candidates")
@@ -73,6 +92,10 @@ def _add_routine(runtime: Runtime) -> None:
     print(runtime.routines.render(item))
 
 
+def _json(value: object) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
+
+
 def main() -> None:
     runtime = Runtime.create(Path.cwd(), session_id="cli")
     print(BANNER)
@@ -94,6 +117,48 @@ def main() -> None:
                 continue
             if text == ":status":
                 _status(runtime)
+                continue
+            if text == ":identity":
+                _json(asdict(runtime.identity.identity))
+                continue
+            if text == ":policy":
+                mandate = runtime.mandates.load()
+                _json({**asdict(mandate), "policy_hash": mandate.policy_hash})
+                continue
+            if text == ":policy-erc8196":
+                _json(ERC8196Adapter.compile(runtime.mandates.load()))
+                continue
+            if text == ":policy-ap2":
+                _json(AP2ConstraintAdapter.compile(runtime.mandates.load()))
+                continue
+            if text == ":policy-oauth":
+                _json(OAuthScopeAdapter.compile(runtime.mandates.load()))
+                continue
+            if text == ":receipts":
+                items = runtime.receipts.recent(20)
+                _json(items if items else {"receipts": []})
+                continue
+            if text == ":verify-receipts":
+                print("VALID" if runtime.receipts.verify_chain() else "INVALID — receipt chain integrity failure")
+                continue
+            if text.startswith(":semantic "):
+                query = text.split(maxsplit=1)[1]
+                results = runtime.semantic.search(query, limit=10)
+                for score, source, content in results:
+                    print(f"{score: .3f} | {source} | {content}")
+                continue
+            if text == ":trajectories":
+                _json(runtime.trajectories.recent(20))
+                continue
+            if text == ":agents":
+                _json([asdict(card) for card in runtime.agents.list()])
+                continue
+            if text.startswith(":swarm "):
+                goal = text.split(maxsplit=1)[1]
+                try:
+                    print(runtime.swarm.run(goal))
+                except Exception as exc:
+                    print(f"Swarm error: {exc}")
                 continue
             if text == ":memory":
                 items = runtime.memory.list_memories(50)
