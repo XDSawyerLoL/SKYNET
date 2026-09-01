@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
+import threading
 import time
 import uuid
 
@@ -20,34 +21,31 @@ class ChannelMessage:
 
 
 class ChannelHub:
-    """Persistent channel-agnostic message bus.
-
-    External adapters (Telegram, Discord, Slack, email, webhooks, etc.) can map
-    messages into this bus without changing SKYNET's conversation core. V0.9
-    ships the durable contract first; credentials stay in adapter-specific code.
-    """
+    """Thread-safe persistent channel-agnostic message bus."""
 
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path, timeout=10)
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(path, timeout=10, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS channel_messages (
-                message_id TEXT PRIMARY KEY,
-                direction TEXT NOT NULL,
-                channel TEXT NOT NULL,
-                peer TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                content TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at REAL NOT NULL
+        with self.lock:
+            self.db.execute("PRAGMA journal_mode=WAL")
+            self.db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS channel_messages (
+                    message_id TEXT PRIMARY KEY,
+                    direction TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    peer TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                )
+                """
             )
-            """
-        )
-        self.db.execute("CREATE INDEX IF NOT EXISTS idx_channel_pending ON channel_messages(direction,status,created_at)")
-        self.db.commit()
+            self.db.execute("CREATE INDEX IF NOT EXISTS idx_channel_pending ON channel_messages(direction,status,created_at)")
+            self.db.commit()
 
     @staticmethod
     def _clean(value: str, limit: int) -> str:
@@ -73,36 +71,41 @@ class ChannelHub:
             status,
             time.time(),
         )
-        self.db.execute(
-            "INSERT INTO channel_messages(message_id,direction,channel,peer,session_id,content,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
-            (item.message_id, item.direction, item.channel, item.peer, item.session_id, item.content, item.status, item.created_at),
-        )
-        self.db.commit()
+        with self.lock:
+            self.db.execute(
+                "INSERT INTO channel_messages(message_id,direction,channel,peer,session_id,content,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                (item.message_id, item.direction, item.channel, item.peer, item.session_id, item.content, item.status, item.created_at),
+            )
+            self.db.commit()
         return item
 
     def pending(self, limit: int = 50) -> list[ChannelMessage]:
-        rows = self.db.execute(
-            "SELECT * FROM channel_messages WHERE direction='inbound' AND status='pending' ORDER BY created_at LIMIT ?",
-            (max(1, min(limit, 500)),),
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT * FROM channel_messages WHERE direction='inbound' AND status='pending' ORDER BY created_at LIMIT ?",
+                (max(1, min(limit, 500)),),
+            ).fetchall()
         return [self._row(r) for r in rows]
 
     def outbox(self, limit: int = 50) -> list[ChannelMessage]:
-        rows = self.db.execute(
-            "SELECT * FROM channel_messages WHERE direction='outbound' AND status='queued' ORDER BY created_at LIMIT ?",
-            (max(1, min(limit, 500)),),
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT * FROM channel_messages WHERE direction='outbound' AND status='queued' ORDER BY created_at LIMIT ?",
+                (max(1, min(limit, 500)),),
+            ).fetchall()
         return [self._row(r) for r in rows]
 
     def mark(self, message_id: str, status: str) -> None:
         clean = status.strip()[:64]
         if not clean:
             raise ValueError("status cannot be empty")
-        self.db.execute("UPDATE channel_messages SET status=? WHERE message_id=?", (clean, message_id))
-        self.db.commit()
+        with self.lock:
+            self.db.execute("UPDATE channel_messages SET status=? WHERE message_id=?", (clean, message_id))
+            self.db.commit()
 
     def recent(self, limit: int = 100) -> list[ChannelMessage]:
-        rows = self.db.execute("SELECT * FROM channel_messages ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 500)),)).fetchall()
+        with self.lock:
+            rows = self.db.execute("SELECT * FROM channel_messages ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 500)),)).fetchall()
         return [self._row(r) for r in rows]
 
     @staticmethod
@@ -113,4 +116,5 @@ class ChannelHub:
         )
 
     def close(self) -> None:
-        self.db.close()
+        with self.lock:
+            self.db.close()
