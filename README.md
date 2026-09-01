@@ -2,41 +2,34 @@
 
 **Sovereign local-first personal AI for Windows.**
 
-SKYNET is not a wrapper around one cloud model. The project owns the agent core and treats models, runtimes and connectors as replaceable components.
+SKYNET owns the agent core and treats models, runtimes and connectors as replaceable components. No paid API is required for the default setup.
 
-Current milestone: **V0.2**
+Current milestone: **V0.3**
 
-## Principles
+## V0.3 highlights
 
-- Local-first and offline-capable.
-- No paid API required.
-- Persistent local memory.
-- Interchangeable local LLMs through Ollama.
-- Explicit permissions for consequential actions.
-- Windows accessibility before blind visual clicking.
-- Optional local vision fallback.
-- MCP as an interchangeable tool protocol.
-- Reusable learned skills stored locally.
-- Structured plans and verification evidence.
-- Audit trail.
-- External components must remain replaceable.
+- Local Ollama chat with automatic routing across configured local models.
+- Persistent SQLite memory.
+- Restart-safe autonomy checkpoints.
+- Local interval routines persisted in SQLite.
+- Unattended routines never auto-approve consequential actions.
+- Windows UI Automation before visual fallback.
+- Optional local multimodal vision through Ollama.
+- MCP stdio client and local MCP server registry.
+- Learned skills now enter a candidate state first.
+- Skill validation + explicit promotion before a skill becomes active.
+- Structured execution plans with evidence.
+- SHA-256 chained audit log.
+- Three frontends using the same runtime: CLI, Desktop and autonomy worker.
 
-## V0.2 capabilities
+## Sovereignty rules
 
-- Local Ollama chat + native tool calling.
-- SQLite persistent memory.
-- Workspace file read/write.
-- Permission-gated PowerShell.
-- Windows visible-window discovery.
-- Windows UI Automation accessibility snapshots.
-- Permission-gated focus / invoke / type actions.
-- Screenshot capture inside the workspace.
-- Optional Ollama multimodal screenshot analysis.
-- Dependency-free MCP stdio client.
-- Local MCP server registry.
-- Persistent Markdown skills.
-- Structured task plans with step evidence.
-- SHA-256 chained local audit log.
+1. The model is replaceable.
+2. Memory, skills, plans, routines and audit data stay local by default.
+3. No cloud API is required for core operation.
+4. Sensitive tools remain permission-gated.
+5. Unattended execution cannot silently grant itself extra permissions.
+6. Learned procedures do not become trusted skills until validated and promoted.
 
 ## Install on Windows
 
@@ -52,10 +45,53 @@ git clone https://github.com/XDSawyerLoL/SKYNET.git
 cd SKYNET
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ollama pull qwen3:8b
+```
+
+### Launch the desktop app
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\launch.ps1
+```
+
+Or directly:
+
+```powershell
+.\.venv\Scripts\skynet-desktop.exe
+```
+
+### Launch the terminal UI
+
+```powershell
 .\.venv\Scripts\skynet.exe
 ```
 
-Optional local vision model:
+### Launch the autonomy worker
+
+```powershell
+.\.venv\Scripts\skynet-worker.exe
+```
+
+The worker checks due routines at the configured polling interval. It can use read-only/SAFE tools, but confirmation-gated actions are denied while unattended and reported back as requiring user approval.
+
+## Multi-model local routing
+
+The default setup uses one model:
+
+```text
+SKYNET_MODEL=qwen3:8b
+SKYNET_MODELS=qwen3:8b
+```
+
+You can add installed local specialists without changing the agent core, for example:
+
+```text
+SKYNET_MODEL=qwen3:8b
+SKYNET_MODELS=qwen3:8b,qwen2.5-coder:7b
+```
+
+SKYNET chooses among installed candidates and falls back to the default model if a specialist fails.
+
+## Optional local vision
 
 ```powershell
 ollama pull qwen2.5vl:7b
@@ -68,58 +104,62 @@ Then set:
 SKYNET_VISION_MODEL=qwen2.5vl:7b
 ```
 
-The vision model is optional. Windows accessibility inspection works without it.
+Windows accessibility inspection still works without a vision model.
 
-## Useful commands
+## CLI commands
 
 ```text
 :status
 :memory
 :skills
+:skill-candidates
+:skill-validate <name>
+:skill-promote <name>
+:routines
+:routine-add
+:routine-run
+:checkpoints
 :mcp
 :windows
 :quit
 ```
 
-## Security model
-
-Read-only inspection is generally allowed automatically. Actions that modify files, type into applications, invoke UI controls, run PowerShell, capture the screen, save skills or call arbitrary MCP tools require confirmation by default.
-
-Unknown tools are blocked by default.
-
-SKYNET never treats tool/file/web/MCP content as trusted instructions and should never claim success without tool evidence.
-
-See `SECURITY.md` and `docs/V0.2.md`.
-
-## Architecture direction
+## Learned skill lifecycle
 
 ```text
-                    SKYNET CORE
-                        |
-       +----------------+----------------+
-       |                |                |
-     Memory           Planner          Skills
-       |                |                |
-       +---------- Permission/Audit ------+
-                        |
-                     Tool Bus
-          +-------------+-------------+
-          |             |             |
-       Windows         MCP          Files/Shell
-          |
-   Accessibility Tree
-          |
-   deterministic action
-          |
-     Vision fallback
-                        |
-                   Model Layer
-                        |
-              Ollama / future runtimes
+successful procedure
+      ↓
+skill candidate
+      ↓
+static quality/safety validation
+      ↓
+explicit user-approved promotion
+      ↓
+approved reusable skill
 ```
 
-The long-term goal is a sovereign personal AI whose identity, memory, skills, permissions and operational history survive model changes.
+A skill is documentation/procedure. It does not rewrite the SKYNET core.
 
-## License
+## Autonomy model
 
-No license has been granted yet. Until a project license is explicitly added, copyright remains with the repository owner.
+```text
+routine due
+   ↓
+checkpoint: running
+   ↓
+agent executes local SAFE/read-only work
+   ↓
+consequential tool requested?
+   ├─ no  → continue + verify
+   └─ yes → deny unattended action + report approval needed
+   ↓
+checkpoint: ok / needs_user / failed
+   ↓
+next run scheduled
+```
+
+## Data
+
+Runtime state lives under `.skynet/` by default and is ignored by Git. The workspace is `workspace/` by default.
+
+See `docs/V0.3.md` for the architecture and milestone details.
