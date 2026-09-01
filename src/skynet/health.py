@@ -4,9 +4,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+
+
+_COMPONENT = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,34 +22,33 @@ class Heartbeat:
 
 
 class HeartbeatStore:
+    """Process-safe heartbeat files: one atomic file per component."""
+
     def __init__(self, path: Path) -> None:
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists():
-            self.path.write_text("{}", encoding="utf-8")
+        self.root = path
+        self.root.mkdir(parents=True, exist_ok=True)
 
-    def _load(self) -> dict[str, dict]:
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            return {}
-
-    def _save(self, data: dict[str, dict]) -> None:
-        temp = self.path.with_suffix(".tmp")
-        temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(self.path)
+    def _path(self, component: str) -> Path:
+        if not _COMPONENT.fullmatch(component):
+            raise ValueError("invalid heartbeat component")
+        return self.root / f"{component}.json"
 
     def beat(self, component: str, state: str = "ok", pid: int | None = None) -> Heartbeat:
         item = Heartbeat(component, int(pid or os.getpid()), state, time.time())
-        data = self._load()
-        data[component] = asdict(item)
-        self._save(data)
+        target = self._path(component)
+        temp = target.with_suffix(f".{os.getpid()}.tmp")
+        temp.write_text(json.dumps(asdict(item), ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(target)
         return item
 
     def get(self, component: str) -> Heartbeat | None:
-        raw = self._load().get(component)
-        return Heartbeat(**raw) if raw else None
+        target = self._path(component)
+        if not target.exists():
+            return None
+        try:
+            return Heartbeat(**json.loads(target.read_text(encoding="utf-8")))
+        except Exception:
+            return None
 
     def stale(self, component: str, max_age_s: float) -> bool:
         item = self.get(component)
@@ -61,7 +64,9 @@ class GlobalControl:
 
     def engage(self, reason: str = "user-requested") -> None:
         payload = {"engaged": True, "reason": reason[:1000], "timestamp": time.time()}
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp = self.path.with_suffix(f".{os.getpid()}.tmp")
+        temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(self.path)
 
     def release(self) -> None:
         self.path.unlink(missing_ok=True)
@@ -96,7 +101,9 @@ class CrashLoopGuard:
             return []
 
     def _save(self, events: list[float]) -> None:
-        self.path.write_text(json.dumps(events[-20:], indent=2), encoding="utf-8")
+        temp = self.path.with_suffix(f".{os.getpid()}.tmp")
+        temp.write_text(json.dumps(events[-20:], indent=2), encoding="utf-8")
+        temp.replace(self.path)
 
     def record_crash(self) -> int:
         now = time.time()
@@ -130,7 +137,7 @@ class WorkerSupervisor:
 
     def __init__(self, root: Path, data_dir: Path, poll_s: int = 5, stale_after_s: int = 30) -> None:
         self.root = root.resolve()
-        self.heartbeat = HeartbeatStore(data_dir / "heartbeats.json")
+        self.heartbeat = HeartbeatStore(data_dir / "heartbeats")
         self.control = GlobalControl(data_dir / "kill-switch.json")
         self.crashes = CrashLoopGuard(data_dir / "worker-crashes.json")
         self.poll_s = max(2, int(poll_s))
