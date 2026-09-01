@@ -22,6 +22,7 @@ $reference = Join-Path $voiceDir 'reference.wav'
 $tempReference = Join-Path $voiceDir 'reference.new.wav'
 $backup = Join-Path $voiceDir 'reference.backup.wav'
 $marker = Join-Path $voiceDir 'chatterbox.enabled'
+$sourceMarker = Join-Path $voiceDir 'reference.source'
 $voicePython = Join-Path $voiceDir 'venv\Scripts\python.exe'
 $worker = Join-Path (Get-Location) 'src\skynet\voice_worker.py'
 $validation = Join-Path $voiceDir 'reference-validation.wav'
@@ -61,7 +62,6 @@ if (Test-Path $reference) {
     Copy-Item -LiteralPath $reference -Destination $backup -Force
 }
 
-# Une référence personnalisée doit être revalidée avant que Chatterbox soit déclaré actif.
 Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
 
 if ((Test-Path $voicePython) -and (Test-Path $worker)) {
@@ -75,14 +75,16 @@ if ((Test-Path $voicePython) -and (Test-Path $worker)) {
     }
     Remove-Item -LiteralPath $validation -Force -ErrorAction SilentlyContinue
     Move-Item -LiteralPath $tempReference -Destination $reference -Force
+    Set-Content -LiteralPath $sourceMarker -Value 'custom-user-provided' -Encoding ASCII
     Set-Content -LiteralPath $marker -Value 'female-reference-validated' -Encoding ASCII
     Write-Host ''
     Write-Host 'Nouvelle identité vocale installée et validée.' -ForegroundColor Green
     Write-Host 'Test : .\.venv\Scripts\skynet-voice.exe test'
 } else {
     Move-Item -LiteralPath $tempReference -Destination $reference -Force
+    Set-Content -LiteralPath $sourceMarker -Value 'custom-user-provided' -Encoding ASCII
     Write-Host ''
-    Write-Host 'Référence installée.' -ForegroundColor Green
+    Write-Host 'Référence personnalisée installée.' -ForegroundColor Green
     Write-Host 'Le moteur premium n est pas encore installé ou à jour.'
     Write-Host 'Lancez ensuite : powershell -ExecutionPolicy Bypass -File .\install-voice-premium.ps1' -ForegroundColor Yellow
 }
