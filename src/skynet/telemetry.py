@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
+import threading
 import time
 
 
@@ -21,25 +22,27 @@ class ModelTelemetryStore:
     """Local performance evidence for adaptive routing."""
 
     def __init__(self, path: Path) -> None:
-        self.db = sqlite3.connect(path)
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS model_telemetry (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                model TEXT NOT NULL,
-                task_class TEXT NOT NULL,
-                latency_s REAL NOT NULL,
-                tokens_per_s REAL,
-                energy_wh REAL,
-                gpu_memory_mb REAL,
-                ram_delta_mb REAL,
-                success INTEGER NOT NULL
-            )
-        """)
-        columns = {row[1] for row in self.db.execute("PRAGMA table_info(model_telemetry)").fetchall()}
-        if "ram_delta_mb" not in columns:
-            self.db.execute("ALTER TABLE model_telemetry ADD COLUMN ram_delta_mb REAL")
-        self.db.commit()
+        self.db = sqlite3.connect(path, check_same_thread=False)
+        self.lock = threading.RLock()
+        with self.lock:
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS model_telemetry (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    model TEXT NOT NULL,
+                    task_class TEXT NOT NULL,
+                    latency_s REAL NOT NULL,
+                    tokens_per_s REAL,
+                    energy_wh REAL,
+                    gpu_memory_mb REAL,
+                    ram_delta_mb REAL,
+                    success INTEGER NOT NULL
+                )
+            """)
+            columns = {row[1] for row in self.db.execute("PRAGMA table_info(model_telemetry)").fetchall()}
+            if "ram_delta_mb" not in columns:
+                self.db.execute("ALTER TABLE model_telemetry ADD COLUMN ram_delta_mb REAL")
+            self.db.commit()
 
     def record(
         self,
@@ -52,11 +55,12 @@ class ModelTelemetryStore:
         ram_delta_mb: float | None = None,
         success: bool = True,
     ) -> None:
-        self.db.execute(
-            "INSERT INTO model_telemetry(ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb,success) VALUES(?,?,?,?,?,?,?,?,?)",
-            (time.time(), model, task_class, float(latency_s), tokens_per_s, energy_wh, gpu_memory_mb, ram_delta_mb, 1 if success else 0),
-        )
-        self.db.commit()
+        with self.lock:
+            self.db.execute(
+                "INSERT INTO model_telemetry(ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb,success) VALUES(?,?,?,?,?,?,?,?,?)",
+                (time.time(), model, task_class, float(latency_s), tokens_per_s, energy_wh, gpu_memory_mb, ram_delta_mb, 1 if success else 0),
+            )
+            self.db.commit()
 
     def stats(self, model: str, task_class: str | None = None, limit: int = 50) -> ModelStats | None:
         params: list[object] = [model]
@@ -65,10 +69,11 @@ class ModelTelemetryStore:
             where += " AND task_class=?"
             params.append(task_class)
         params.append(max(1, min(limit, 500)))
-        rows = self.db.execute(
-            f"SELECT latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb FROM model_telemetry WHERE {where} ORDER BY id DESC LIMIT ?",
-            tuple(params),
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                f"SELECT latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb FROM model_telemetry WHERE {where} ORDER BY id DESC LIMIT ?",
+                tuple(params),
+            ).fetchall()
         if not rows:
             return None
 
@@ -87,12 +92,14 @@ class ModelTelemetryStore:
         )
 
     def recent(self, limit: int = 30) -> list[dict]:
-        rows = self.db.execute(
-            "SELECT ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb,success FROM model_telemetry ORDER BY id DESC LIMIT ?",
-            (max(1, min(limit, 200)),),
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT ts,model,task_class,latency_s,tokens_per_s,energy_wh,gpu_memory_mb,ram_delta_mb,success FROM model_telemetry ORDER BY id DESC LIMIT ?",
+                (max(1, min(limit, 200)),),
+            ).fetchall()
         keys = ("ts", "model", "task_class", "latency_s", "tokens_per_s", "energy_wh", "gpu_memory_mb", "ram_delta_mb", "success")
         return [dict(zip(keys, row)) for row in rows]
 
     def close(self) -> None:
-        self.db.close()
+        with self.lock:
+            self.db.close()
