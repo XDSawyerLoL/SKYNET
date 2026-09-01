@@ -55,12 +55,14 @@ class V08ResilienceTests(unittest.TestCase):
 
     def test_heartbeat_staleness(self):
         with tempfile.TemporaryDirectory() as tmp:
-            store = HeartbeatStore(Path(tmp) / "heartbeats.json")
+            root = Path(tmp) / "heartbeats"
+            store = HeartbeatStore(root)
             store.beat("worker", "ok", pid=123)
             self.assertFalse(store.stale("worker", 60))
-            data = json.loads((Path(tmp) / "heartbeats.json").read_text(encoding="utf-8"))
-            data["worker"]["timestamp"] = time.time() - 120
-            (Path(tmp) / "heartbeats.json").write_text(json.dumps(data), encoding="utf-8")
+            path = root / "worker.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["timestamp"] = time.time() - 120
+            path.write_text(json.dumps(data), encoding="utf-8")
             self.assertTrue(store.stale("worker", 60))
 
     def test_crash_loop_guard_blocks(self):
