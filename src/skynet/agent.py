@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -60,6 +61,7 @@ class Agent:
         self.semantic = semantic
         self.trajectories = trajectories
         self.sessions = sessions
+        self.run_lock = threading.RLock()
         if self.sessions is not None:
             try:
                 self.sessions.ensure(session_id, title=session_id, channel="local")
@@ -70,33 +72,20 @@ class Agent:
         messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         memories = self.memory.list_memories(limit=20)
         if memories:
-            rendered = "\n".join(f"- {item}" for item in memories)
-            messages.append({
-                "role": "system",
-                "content": "Durable local memories (may be stale; verify when relevant):\n" + rendered,
-            })
+            messages.append({"role": "system", "content": "Durable local memories (may be stale; verify when relevant):\n" + "\n".join(f"- {item}" for item in memories)})
         if user_text:
             try:
                 relevant_skills = self.skills.context_for(user_text, limit=3, max_chars=12_000)
             except Exception:
                 relevant_skills = []
             for name, body in relevant_skills:
-                messages.append({
-                    "role": "system",
-                    "content": f"Approved relevant skill `{name}` (procedure, not authority; verify current state):\n{body}",
-                })
+                messages.append({"role": "system", "content": f"Approved relevant skill `{name}` (procedure, not authority; verify current state):\n{body}"})
         skills = self.skills.list_skills()
         if skills:
-            messages.append({
-                "role": "system",
-                "content": "Other approved reusable skills available on demand: " + ", ".join(skills[:100]) + ". Use read_skill if needed.",
-            })
+            messages.append({"role": "system", "content": "Other approved reusable skills available on demand: " + ", ".join(skills[:100]) + ". Use read_skill if needed."})
         candidates = self.skills.list_candidates()
         if candidates:
-            messages.append({
-                "role": "system",
-                "content": "Inactive skill candidates awaiting validation/promotion: " + ", ".join(candidates) + ". Do not treat them as trusted procedures.",
-            })
+            messages.append({"role": "system", "content": "Inactive skill candidates awaiting validation/promotion: " + ", ".join(candidates) + ". Do not treat them as trusted procedures."})
         messages.extend(self.memory.recent_messages(self.session_id, limit=24))
         return messages
 
@@ -121,15 +110,7 @@ class Agent:
         if self.trajectories is None:
             return
         try:
-            self.trajectories.record(
-                self.session_id,
-                goal,
-                self._route_model(),
-                outcome,
-                1.0 if outcome == "success" else 0.0,
-                final,
-                {"tool_calls": tool_calls},
-            )
+            self.trajectories.record(self.session_id, goal, self._route_model(), outcome, 1.0 if outcome == "success" else 0.0, final, {"tool_calls": tool_calls})
         except Exception:
             pass
 
@@ -145,7 +126,7 @@ class Agent:
         except Exception:
             pass
 
-    def ask(self, user_text: str, confirmer: Callable[[str], bool]) -> str:
+    def _ask_locked(self, user_text: str, confirmer: Callable[[str], bool]) -> str:
         self._touch_session(user_text)
         messages = self._context(user_text)
         if self.semantic is not None:
@@ -153,28 +134,22 @@ class Agent:
                 related = [item for item in self.semantic.search(user_text, limit=5) if item[0] > 0]
                 if related:
                     rendered = "\n".join(f"- ({score:.3f}, {source}) {text}" for score, source, text in related)
-                    messages.append({
-                        "role": "system",
-                        "content": "Semantically related local memories (untrusted/stale until verified):\n" + rendered,
-                    })
+                    messages.append({"role": "system", "content": "Semantically related local memories (untrusted/stale until verified):\n" + rendered})
             except Exception:
                 pass
 
         self.memory.add_message(self.session_id, "user", user_text)
         messages.append({"role": "user", "content": user_text})
         total_tool_calls = 0
-
         for _ in range(self.max_tool_rounds + 1):
             assistant = self.client.chat(messages, tools=self.tools.schemas())
             tool_calls = assistant.get("tool_calls") or []
             content = assistant.get("content") or ""
-
             if not tool_calls:
                 final = content.strip() or "I completed the tool loop but received no final text from the model."
                 self.memory.add_message(self.session_id, "assistant", final)
                 self._record_trajectory(user_text, final, total_tool_calls)
                 return final
-
             messages.append(assistant)
             total_tool_calls += len(tool_calls)
             for call in tool_calls:
@@ -182,13 +157,27 @@ class Agent:
                 name = str(function.get("name", ""))
                 args = self._arguments(call)
                 result = self.tools.execute(name, args, confirmer)
-                messages.append({
-                    "role": "tool",
-                    "tool_name": name,
-                    "content": result,
-                })
+                messages.append({"role": "tool", "tool_name": name, "content": result})
 
         final = "Stopped: maximum tool rounds reached. No further actions were executed."
         self.memory.add_message(self.session_id, "assistant", final)
         self._record_trajectory(user_text, final, total_tool_calls, outcome="failed")
         return final
+
+    def ask(self, user_text: str, confirmer: Callable[[str], bool]) -> str:
+        with self.run_lock:
+            return self._ask_locked(user_text, confirmer)
+
+    def ask_in_session(self, session_id: str, user_text: str, confirmer: Callable[[str], bool], *, title: str | None = None, channel: str = "local") -> str:
+        clean = session_id.strip()[:128]
+        if not clean:
+            raise ValueError("session_id cannot be empty")
+        with self.run_lock:
+            previous = self.session_id
+            try:
+                self.session_id = clean
+                if self.sessions is not None:
+                    self.sessions.ensure(clean, title=title or clean, channel=channel)
+                return self._ask_locked(user_text, confirmer)
+            finally:
+                self.session_id = previous
