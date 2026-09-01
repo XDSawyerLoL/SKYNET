@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .arena import SyntheticAgentArena
 from .config import Config
+from .fuzz import FastPolicyFuzzer
 from .reality import RealityAccelerator, ShadowTrajectoryAnalyzer
 from .trajectories import TrajectoryStore
 
@@ -20,7 +21,12 @@ def main() -> None:
     parser.add_argument("--root", default=".", help="SKYNET project root")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    core = sub.add_parser("core", help="Run high-speed deterministic core soak/fault simulation")
+    fuzz = sub.add_parser("fuzz", help="Run very high-speed deterministic Policy/Mandate/Permission mutation fuzzing")
+    fuzz.add_argument("--cases", type=int, default=100_000)
+    fuzz.add_argument("--seed", type=int, default=8196)
+    fuzz.add_argument("--strict", action="store_true")
+
+    core = sub.add_parser("core", help="Run persistence/restart core soak and fault simulation")
     core.add_argument("--episodes", type=int, default=10_000)
     core.add_argument("--workers", type=int, default=8)
     core.add_argument("--seed", type=int, default=8196)
@@ -46,6 +52,22 @@ def main() -> None:
     args = parser.parse_args()
     root = Path(args.root).resolve()
     config, output = _paths(root)
+
+    if args.command == "fuzz":
+        report = FastPolicyFuzzer(output, seed=args.seed).run(args.cases)
+        print(json.dumps({
+            "cases": report.cases,
+            "passed": report.passed,
+            "pass_rate": report.pass_rate,
+            "permission_checks": report.permission_checks,
+            "elapsed_seconds": report.elapsed_seconds,
+            "cases_per_second": report.cases_per_second,
+            "failures": len(report.failures),
+            "report": str(output / "fuzz-latest.json"),
+        }, ensure_ascii=False, indent=2))
+        if args.strict and report.pass_rate < 1.0:
+            raise SystemExit(4)
+        return
 
     if args.command == "core":
         accelerator = RealityAccelerator(output, seed=args.seed)
