@@ -12,7 +12,7 @@ from .runtime import Runtime
 class DesktopApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("SKYNET V0.5 — Sovereign Local AI")
+        self.root.title("SKYNET V0.7 — Sovereign Local AI")
         self.root.geometry("1080x720")
         self.runtime = Runtime.create(Path.cwd(), session_id="desktop")
         self.events: queue.Queue[tuple[str, str]] = queue.Queue()
@@ -32,7 +32,7 @@ class DesktopApp:
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(1, weight=1)
 
-        title = ttk.Label(outer, text="SKYNET V0.5 — Measured Evolution", font=("Segoe UI", 18, "bold"))
+        title = ttk.Label(outer, text="SKYNET V0.7 — Adaptive Lab", font=("Segoe UI", 18, "bold"))
         title.grid(row=0, column=0, sticky="w")
         self.status = ttk.Label(outer, text="")
         self.status.grid(row=0, column=1, sticky="e")
@@ -82,7 +82,10 @@ class DesktopApp:
         ttk.Button(form, text="Exécuter les routines dues", command=self._run_due_manual).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         ttk.Button(form, text="État évolution", command=self._show_evolution).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        self._append("SYSTEM", "SKYNET V0.5 démarré. Mandats, évolution mesurée, mémoire, routines et outils restent locaux par défaut.")
+        self._append(
+            "SYSTEM",
+            "SKYNET V0.7 démarré. Routage mesuré, laboratoire adaptatif, mandats, mémoire, routines et outils restent locaux par défaut.",
+        )
 
     def _append(self, who: str, text: str) -> None:
         self.chat.configure(state="normal")
@@ -107,8 +110,18 @@ class DesktopApp:
         deployment = "baseline" if deployed is None else f"{deployed.active} [{deployed.status}]"
         scores = self.runtime.scores.recent(5)
         proposals = self.runtime.trajectory_miner.proposals()
-        text = f"Deployment: {deployment}\nScorecards: {len(scores)} recent\nLearning proposals: {len(proposals)}\n"
-        text += "Use the CLI :tournament command for explicit model benchmarking and canary promotion."
+        hardware = self.runtime.profiler.snapshot()
+        lab = self.runtime.lab.choose()
+        recent_telemetry = self.runtime.telemetry.recent(20)
+        text = (
+            f"Deployment: {deployment}\n"
+            f"Scorecards: {len(scores)} recent\n"
+            f"Learning proposals: {len(proposals)}\n"
+            f"Telemetry samples: {len(recent_telemetry)} recent\n"
+            f"Lab backend: {lab.name} — {lab.reason}\n"
+            f"RAM available: {hardware.ram_available_mb or '?'} MB\n"
+            f"GPU: {hardware.gpu_name or 'not detected'}"
+        )
         self._append("EVOLUTION", text)
 
     def _send(self) -> None:
