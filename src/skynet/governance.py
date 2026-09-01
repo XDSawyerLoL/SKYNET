@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from .policy import ActionRequest, MandateStore, PolicyEngine, ReceiptStore
+from .health import GlobalControl
+from .policy import ActionDecision, ActionRequest, MandateStore, PolicyEngine, ReceiptStore
 from .semantic import SemanticMemory
 from .swarm import SwarmEngine
 from .tools import ToolBus
@@ -14,7 +15,7 @@ class GovernedToolBus:
 
     The language model can propose a tool call, but cannot decide whether the
     mandate permits it. Existing ToolBus permissions remain a second independent
-    enforcement layer.
+    enforcement layer. The V0.8 global kill-switch is checked before both.
     """
 
     def __init__(
@@ -26,6 +27,7 @@ class GovernedToolBus:
         agent_id: str,
         semantic: SemanticMemory | None = None,
         swarm: SwarmEngine | None = None,
+        control: GlobalControl | None = None,
     ) -> None:
         self.inner = inner
         self.mandates = mandates
@@ -34,6 +36,7 @@ class GovernedToolBus:
         self.agent_id = agent_id
         self.semantic = semantic
         self.swarm = swarm
+        self.control = control
 
     def schemas(self) -> list[dict[str, Any]]:
         schemas = list(self.inner.schemas())
@@ -87,6 +90,12 @@ class GovernedToolBus:
             reversible=self._reversible(name),
             parameters={k: v for k, v in args.items() if k not in {"content", "text", "command"}},
         )
+
+        if self.control is not None and self.control.engaged():
+            decision = ActionDecision(False, "global_kill_switch", "global SKYNET kill-switch is engaged", mandate.policy_hash)
+            self.receipts.append(request, decision, "kill_switch_denied")
+            return "DENIED BY GLOBAL KILL SWITCH: explicit user re-arm required"
+
         decision = self.policy.evaluate(mandate, request)
         if not decision.allowed:
             self.receipts.append(request, decision, "policy_denied")
