@@ -32,6 +32,22 @@ DEFAULT_POLICY: dict[str, PermissionLevel] = {
     "mcp_list_servers": PermissionLevel.OBSERVE,
     "mcp_list_tools": PermissionLevel.OBSERVE,
     "mcp_call": PermissionLevel.CONFIRM,
+    "session_list": PermissionLevel.OBSERVE,
+    "session_search": PermissionLevel.OBSERVE,
+    "integration_list": PermissionLevel.OBSERVE,
+    "integration_capabilities": PermissionLevel.OBSERVE,
+    "browser_navigate": PermissionLevel.SAFE,
+    "browser_snapshot": PermissionLevel.OBSERVE,
+    "browser_back": PermissionLevel.CONFIRM,
+    "browser_click": PermissionLevel.CONFIRM,
+    "browser_type": PermissionLevel.CONFIRM,
+    "browser_screenshot": PermissionLevel.CONFIRM,
+    "dev_doctor": PermissionLevel.OBSERVE,
+    "dev_tree": PermissionLevel.OBSERVE,
+    "dev_git_status": PermissionLevel.OBSERVE,
+    "dev_git_diff": PermissionLevel.OBSERVE,
+    "dev_search": PermissionLevel.OBSERVE,
+    "dev_run_tests": PermissionLevel.CONFIRM,
 }
 
 
