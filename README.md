@@ -2,220 +2,238 @@
 
 **Sovereign local-first governed personal AI for Windows.**
 
-SKYNET owns the agent core and treats models, runtimes, connectors, payment rails and external authorization systems as replaceable adapters. No paid API is required for the default setup.
+SKYNET owns the agent core and treats models, runtimes, connectors, channels, payment rails and external authorization systems as replaceable adapters. No paid API is required for the default setup.
 
-Current milestone: **V0.8 — Trust & Resilience**
+Current milestone: **V0.9 — Product Convergence**
 
-## What V0.8 adds
+V0.9 is a deliberate product-convergence release: it closes practical gaps in multi-agent depth, sessions/history, integrations, skills, browser/web use, developer tooling, channels and automations before the first serious real-PC benchmark.
 
-- Separate **Health Supervisor** process for the autonomy worker.
-- Independent worker heartbeat thread, including hung-worker detection.
-- Automatic restart after unexpected worker failure.
-- **Crash-loop protection**: repeated failures engage the global kill-switch instead of restarting forever.
-- Deterministic **global kill-switch below the LLM**, checked before policy/tool execution.
-- Desktop **ARRÊT GLOBAL** / explicit re-arm controls.
-- Signed, tamper-evident **candidate validation reports** bound to SKYNET's local identity.
-- **Failure-derived regression suite** built from real historical failed trajectories; replays are analysis-only and never use tools.
-- Verified portable state backup/import with SHA-256 file manifests.
-- Consistent snapshots of live SQLite databases during backup.
-- Full-identity backup protected with **Windows DPAPI** for the same Windows user profile.
-- Opt-in Windows startup for the supervisor; SKYNET never installs persistence by itself.
+## What V0.9 adds
 
-V0.8 keeps the V0.7 Adaptive Lab: Windows Sandbox / WSL2 / static backends, generated candidate skills, local hardware profiling, resource-aware routing, telemetry, Red Team, risk budgeting, immutable baseline, canary/rollback, mandates, receipts, MCP, Windows control, memory and autonomy.
+- Durable **sessions** with titles, projects, channels, archive state, full-history search and session forking.
+- Desktop session switcher, new/fork/search UX and conversation resume.
+- **Progressive skill disclosure**: relevant approved skills are loaded automatically for a task instead of dumping the whole skill library into context.
+- Read-only support for external `SKILL.md` directories through `SKYNET_SKILL_DIRS` while keeping SKYNET's approved internal skills as the trust source of truth.
+- Local skill usage evidence to improve future relevance ranking.
+- A deeper **hierarchical multi-agent graph** with planner, researcher, analyst, coder, security, critic and verifier dependencies plus persistent run traces.
+- Subagents remain reasoning-only; they do not inherit SKYNET's tool authority.
+- A **local browser harness** with dependency-free read-only HTTP mode and optional interactive Playwright/Chromium.
+- Playwright runs on a dedicated browser worker thread so Desktop, automations and channels can share one browser state safely.
+- A persistent **Integration Registry** with capability indexing, built-in capability declarations, MCP discovery and manifest-based future adapters.
+- Configured MCP tools can be surfaced directly as native `mcp__server__tool` tools while still crossing Mandate + PermissionGate + Receipt enforcement.
+- A persistent channel-neutral **inbox/outbox** and an opt-in authenticated loopback webhook bridge.
+- Channel sessions cannot remotely self-approve sensitive actions.
+- Conversation-bound automations, one-shot jobs and bounded run counts.
+- A bounded **developer toolkit**: doctor, project tree, source search, git status/diff/log and permission-gated unit-test execution.
+- `skynet-admin` product/developer console.
+- Thread-safe SQLite stores for Desktop/automation/channel concurrency.
 
-## Trust chain
+V0.9 keeps the V0.8 Trust & Resilience layer: supervisor/heartbeat, crash-loop protection, global kill-switch, signed validation reports, historical failure regressions, verified backup/import and Windows DPAPI full-identity backup. It also keeps the V0.7 Adaptive Lab, measured model evolution, telemetry, resource-aware routing, Red Team, risk budgeting, canary/rollback, Mandates, signed receipts, Windows UI Automation, vision fallback and local memory.
 
-```text
-real task
-   ↓
-trajectory / evidence
-   ↓
-candidate
-   ↓
-Adaptive Lab
-   ↓
-Red Team
-   ↓
-historical regressions
-   ↓
-objective benchmark
-   ↓
-resource telemetry
-   ↓
-signed validation report
-   ↓
-canary
-   ↓
-accept OR rollback
-```
-
-The model may propose an improvement. It cannot grant itself authority, disable the kill-switch, forge a validation report or bypass the policy/permission boundary.
-
-## Global stop
-
-From the Desktop UI, press **ARRÊT GLOBAL**.
-
-Or from PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\emergency-stop.ps1
-```
-
-Equivalent CLI:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe kill "manual stop"
-```
-
-While engaged, all governed tool calls are denied below the LLM and unattended autonomy stops. Rearm only explicitly:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\rearm.ps1
-```
-
-or:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe rearm
-```
-
-## Supervisor and crash recovery
-
-Run the separate supervisor:
-
-```powershell
-.\.venv\Scripts\skynet-supervisor.exe
-```
-
-The worker sends a heartbeat independently of its current task. If the worker crashes or stops heartbeating, the supervisor can restart it. Persistent routine checkpoints remain the source of restart context. Repeated crashes trip crash-loop protection and engage the global kill-switch.
-
-Opt-in startup:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install-startup.ps1
-```
-
-Remove it:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\remove-startup.ps1
-```
-
-SKYNET does **not** enable startup automatically during installation.
-
-## Failure-derived regression tests
-
-Historical failed trajectories become side-effect-free regression prompts. The original goal is analyzed with **no tools** and the current model must require verification/evidence rather than falsely claiming historical success.
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe regression
-```
-
-Or test another installed model:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe regression qwen3:8b
-```
-
-## Signed candidate validation
-
-After a candidate has been staged and a baseline/scorecard exists:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe validate-candidate <candidate_name>
-```
-
-The report records candidate hash, baseline hash, Red Team result, historical regression result and objective scorecard state, then signs the report with SKYNET's local identity.
-
-Inspect reports:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe reports
-.\.venv\Scripts\skynet-trust.exe verify-report <report_id>
-```
-
-## Backup / migration
-
-Portable backup, suitable for moving non-secret SKYNET state to another machine:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe backup-portable
-```
-
-Portable backups intentionally **exclude `identity.key`**. On another installation, the imported state gets the destination SKYNET identity. SQLite state is snapshotted through SQLite's backup mechanism rather than by blindly copying an open database file.
-
-Before any restore, engage the global kill-switch and close the Desktop/worker so restored state is not concurrently modified:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe kill "restore maintenance"
-.\.venv\Scripts\skynet-trust.exe restore-portable <archive.zip>
-```
-
-The restore command refuses to run if the global kill-switch is not engaged. Review the restored state before explicitly rearming SKYNET.
-
-A full backup including identity can be protected with Windows DPAPI:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe backup-protected
-```
-
-Restore:
-
-```powershell
-.\.venv\Scripts\skynet-trust.exe restore-protected <archive.dpapi>
-```
-
-DPAPI protection is deliberately documented as **Windows-user-profile bound**, not as a cross-machine portable encryption format. SKYNET does not invent custom cryptography for portable secret migration.
-
-## Adaptive Lab from V0.7
-
-```powershell
-.\.venv\Scripts\skynet-evolve.exe status
-.\.venv\Scripts\skynet-evolve.exe hardware
-.\.venv\Scripts\skynet-evolve.exe telemetry
-.\.venv\Scripts\skynet-evolve.exe lab-backends
-.\.venv\Scripts\skynet-evolve.exe generate-candidate
-.\.venv\Scripts\skynet-evolve.exe redteam
-.\.venv\Scripts\skynet-evolve.exe lora-export
-```
-
-Windows Sandbox is the preferred security boundary when available. WSL2 remains a compatibility/development backend, not an equivalent security boundary.
-
-## Governed execution
+## Product architecture
 
 ```text
-User Intent
-    ↓
-Reasoning / planning
-    ↓
-GLOBAL KILL SWITCH
-    ↓
-Canonical Mandate
-    ↓
-Deterministic Policy Engine
-    ↓
-PermissionGate
-    ↓
-Execution
-    ↓
-Evidence + signed Receipt
-    ↓
-Trajectory / telemetry
+                       SKYNET V0.9
+                           │
+                    Sovereign Core
+                           │
+      ┌────────────────────┼─────────────────────┐
+      │                    │                     │
+   Sessions             Memory                Skills
+ history/search       semantic + facts      progressive
+ fork/projects        trajectories          disclosure
+      │                    │                     │
+      └────────────────────┼─────────────────────┘
+                           │
+                      Main Agent
+                           │
+                    Model Router
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+       Hierarchical Swarm         Single-agent path
+              │                         │
+              └────────────┬────────────┘
+                           │
+                    GLOBAL KILL SWITCH
+                           │
+                    Canonical Mandate
+                           │
+                 Deterministic Policy
+                           │
+                    PermissionGate
+                           │
+                        Tool Bus
+          ┌────────┬───────┼───────┬─────────┐
+          │        │       │       │         │
+       Windows   Browser   MCP    Files      Dev
+          │        │       │       │         │
+          └────────┴───────┼───────┴─────────┘
+                           │
+                  Evidence + Receipt
+                           │
+                   Trajectory / Evals
 ```
 
-External standards remain adapters:
+## Multi-agent depth
+
+The default complex-task graph is dependency-aware rather than a flat fan-out:
 
 ```text
-SKYNET Mandate
- ├─ ERC-8196 projection
- ├─ AP2 projection
- ├─ OAuth delegated scopes
- └─ future x402 / A2A / enterprise adapters
+planner ─────────────┐
+researcher ──────────┼─────────────┐
+analyst ──────┬──────┘             │
+              ├─ implementation ───┼─ critic ──┐
+              └─ security ─────────┘           ├─ verifier
+                                               │
+                                         lead synthesis
 ```
+
+Specialists are bounded local reasoning workers. They do **not** receive independent Windows/browser/MCP authority. Tool execution remains centralized behind SKYNET's deterministic governance boundary.
+
+Inspect traces:
+
+```powershell
+.\.venv\Scripts\skynet-admin.exe swarm-runs
+```
+
+## Sessions and history
+
+The Desktop UI can create, switch, fork and search sessions. Sessions can also be grouped by project/channel metadata.
+
+CLI inspection:
+
+```powershell
+.\.venv\Scripts\skynet-admin.exe sessions
+.\.venv\Scripts\skynet-admin.exe session-search "browser failure"
+.\.venv\Scripts\skynet-admin.exe session-fork <session_id>
+```
+
+Forking copies recent history into a new independent session so experiments can diverge without losing the original conversation.
+
+## Progressive skills
+
+SKYNET ranks approved skills against the current request and loads only the most relevant procedures into context. Usage is tracked locally.
+
+```powershell
+.\.venv\Scripts\skynet-admin.exe skill-usage
+```
+
+Optional external skill directories can be added without copying them into SKYNET:
+
+```text
+SKYNET_SKILL_DIRS=C:\path\to\skills
+```
+
+A directory containing `my-skill\SKILL.md` becomes discoverable read-only. External skills do not gain executable authority merely by being present.
+
+## Browser / web
+
+The core always supports read-only HTTP navigation and extraction using Python's standard library.
+
+For interactive local Chromium:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-browser.ps1
+```
+
+This installs Playwright and Chromium locally. No cloud browser is required.
+
+Interactive browser actions such as clicks, typing and screenshots remain permission-gated. Browser/webpage content is always treated as untrusted data.
+
+## Integrations and MCP
+
+Inspect enabled capabilities:
+
+```powershell
+.\.venv\Scripts\skynet-admin.exe integrations
+.\.venv\Scripts\skynet-admin.exe capabilities
+.\.venv\Scripts\skynet-admin.exe tools
+```
+
+Configured MCP servers remain replaceable adapters. V0.9 can introspect their tool schemas and expose them directly to the model as:
+
+```text
+mcp__<server>__<tool>
+```
+
+Dynamic MCP tools are **confirmation-required by default**, risk-classified like explicit MCP calls and included in signed receipts.
+
+Integration manifests under `.skynet/integrations.d/*.json` are declarative metadata only; a manifest cannot grant itself executable authority.
+
+## Channels
+
+V0.9 provides a durable channel-neutral inbox/outbox plus an authenticated local webhook bridge. It is infrastructure for Telegram/Discord/Slack/email/etc. adapters; it is **not a claim that every provider-specific adapter ships built in yet**.
+
+Set a private local token in `.env`:
+
+```text
+SKYNET_WEBHOOK_TOKEN=<your-random-secret>
+SKYNET_CHANNEL_HOST=127.0.0.1
+SKYNET_CHANNEL_PORT=8765
+```
+
+Then launch explicitly:
+
+```powershell
+.\.venv\Scripts\skynet-channel.exe
+```
+
+Inbound adapter contract:
+
+```text
+POST /inbound/<channel>/<peer>?session=<session_id>
+Authorization: Bearer <token>
+{"content":"message"}
+```
+
+Outbound adapters poll:
+
+```text
+GET /outbox
+Authorization: Bearer <token>
+```
+
+The bridge binds to loopback by default and refuses a remote bind unless `SKYNET_ALLOW_REMOTE_CHANNEL_BIND=1` is explicitly set.
+
+## Automations
+
+Automations are now bound to sessions so scheduled work can continue the correct conversation context.
+
+Existing interval routines remain supported. V0.9 also supports one-shot and bounded jobs.
+
+```powershell
+.\.venv\Scripts\skynet-admin.exe automations
+.\.venv\Scripts\skynet-admin.exe automation-once 300 <session_id> "check the result and summarize changes"
+```
+
+Unattended execution still cannot approve confirmation-required actions.
+
+## Developer tooling
+
+```powershell
+.\.venv\Scripts\skynet-admin.exe doctor
+```
+
+The governed agent can use bounded developer tools for:
+
+- project tree;
+- source search;
+- git status;
+- git diff;
+- recent commits;
+- local unit tests.
+
+Reading is non-mutating. Test execution runs local project code and therefore requires confirmation.
 
 ## Install on Windows
 
-Requirements: Windows 10/11, Python 3.11+, Git and Ollama.
+Requirements:
+
+- Windows 10/11
+- Python 3.11+
+- Git
+- Ollama
 
 ```powershell
 git clone https://github.com/XDSawyerLoL/SKYNET.git
@@ -230,10 +248,16 @@ Desktop:
 powershell -ExecutionPolicy Bypass -File .\launch.ps1
 ```
 
-CLI:
+Core CLI:
 
 ```powershell
 .\.venv\Scripts\skynet.exe
+```
+
+Product/developer console:
+
+```powershell
+.\.venv\Scripts\skynet-admin.exe status
 ```
 
 Evolution lab:
@@ -248,20 +272,45 @@ Trust/resilience console:
 .\.venv\Scripts\skynet-trust.exe status
 ```
 
+Supervisor:
+
+```powershell
+.\.venv\Scripts\skynet-supervisor.exe
+```
+
+## Global stop and resilience
+
+Emergency stop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\emergency-stop.ps1
+```
+
+Re-arm only explicitly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\rearm.ps1
+```
+
+The kill-switch is checked below model reasoning before policy/tool execution. Crash loops stop autonomy rather than restarting forever.
+
 ## Sovereignty rules
 
-1. Models are replaceable.
-2. Memory, trajectories, policies, receipts, telemetry, scorecards and deployment state remain local by default.
-3. No cloud API is required for core operation.
-4. The LLM never decides whether its own consequential action is authorized.
-5. The global kill-switch is enforced beneath model reasoning.
-6. Generated improvements remain untrusted until independently evaluated.
-7. Historical failures become regression evidence instead of being forgotten.
-8. Validation reports are signed by the local SKYNET identity.
-9. Crash loops stop autonomy rather than restarting forever.
-10. Portable exports exclude the local signing key by default.
-11. SKYNET does not invent its own portable encryption scheme.
-12. Model/candidate promotion remains measured and rollback-capable.
-13. External protocols remain adapters, never SKYNET's sovereign source of truth.
+1. Models remain replaceable.
+2. Sessions, memories, trajectories, skills, policies, receipts, telemetry and deployment state stay local by default.
+3. No paid/cloud API is required for core operation.
+4. The LLM never authorizes its own consequential action.
+5. Subagents do not automatically inherit tool authority.
+6. Dynamic integrations remain behind deterministic policy and permissions.
+7. External skills/manifests are data until explicitly trusted/promoted.
+8. Web/channel/tool output is untrusted input, never higher-priority instruction.
+9. The global kill-switch remains beneath model reasoning.
+10. Historical failures become regression tests instead of being forgotten.
+11. Improvement promotion remains measured, canary-based and rollback-capable.
+12. SKYNET does not claim provider-specific integrations until their adapters actually exist and are tested.
 
-Runtime state lives under `.skynet/` by default. See `docs/V0.8.md` for the milestone architecture.
+## Next phase: real-PC benchmark
+
+V0.9 is intentionally the convergence release before field testing. The next milestone is not another feature dump: it is a **Reality Benchmark** on the target Windows PC measuring real task success, intervention rate, false-success rate, recovery, steps, latency, resource pressure and permission fatigue.
+
+See `docs/V0.9.md` for architecture and benchmark entry criteria.
