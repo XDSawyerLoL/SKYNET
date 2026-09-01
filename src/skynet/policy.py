@@ -5,6 +5,7 @@ from pathlib import Path
 import hashlib
 import json
 import sqlite3
+import threading
 import time
 import uuid
 
@@ -73,8 +74,7 @@ class MandateStore:
             ))
 
     def load(self) -> Mandate:
-        data = json.loads(self.path.read_text(encoding="utf-8"))
-        return Mandate(**data)
+        return Mandate(**json.loads(self.path.read_text(encoding="utf-8")))
 
     def save(self, mandate: Mandate) -> None:
         temp = self.path.with_suffix(".tmp")
@@ -84,72 +84,78 @@ class MandateStore:
 
 class ReceiptStore:
     def __init__(self, path: Path, identity: LocalIdentityStore) -> None:
-        self.db = sqlite3.connect(path)
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(path, check_same_thread=False, timeout=10)
         self.identity = identity
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS receipts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                nonce TEXT NOT NULL UNIQUE,
-                policy_hash TEXT NOT NULL,
-                action TEXT NOT NULL,
-                target TEXT NOT NULL,
-                value INTEGER NOT NULL,
-                decision TEXT NOT NULL,
-                result TEXT NOT NULL,
-                previous_hash TEXT NOT NULL,
-                entry_hash TEXT NOT NULL,
-                signature TEXT NOT NULL
-            )
-        """)
-        self.db.commit()
+        with self.lock:
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS receipts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    nonce TEXT NOT NULL UNIQUE,
+                    policy_hash TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    value INTEGER NOT NULL,
+                    decision TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    previous_hash TEXT NOT NULL,
+                    entry_hash TEXT NOT NULL,
+                    signature TEXT NOT NULL
+                )
+            """)
+            self.db.commit()
 
     def nonce_seen(self, nonce: str) -> bool:
-        return self.db.execute("SELECT 1 FROM receipts WHERE nonce=?", (nonce,)).fetchone() is not None
+        with self.lock:
+            return self.db.execute("SELECT 1 FROM receipts WHERE nonce=?", (nonce,)).fetchone() is not None
 
     def spent_since(self, policy_hash: str, since: float) -> int:
-        row = self.db.execute(
-            "SELECT COALESCE(SUM(value),0) FROM receipts WHERE policy_hash=? AND ts>=? AND decision='allowed' AND result='ok'",
-            (policy_hash, since),
-        ).fetchone()
+        with self.lock:
+            row = self.db.execute(
+                "SELECT COALESCE(SUM(value),0) FROM receipts WHERE policy_hash=? AND ts>=? AND decision='allowed' AND result='ok'",
+                (policy_hash, since),
+            ).fetchone()
         return int(row[0] or 0)
 
     def append(self, request: ActionRequest, decision: ActionDecision, result: str) -> str:
-        row = self.db.execute("SELECT entry_hash FROM receipts ORDER BY id DESC LIMIT 1").fetchone()
-        previous = row[0] if row else "0" * 64
-        payload = {
-            "ts": request.timestamp,
-            "nonce": request.nonce,
-            "policy_hash": decision.policy_hash,
-            "action": request.action,
-            "target": request.target,
-            "value": request.value,
-            "decision": "allowed" if decision.allowed else "denied",
-            "result": result,
-            "previous_hash": previous,
-        }
-        body = canonical_json(payload).encode("utf-8")
-        entry_hash = hashlib.sha256(body).hexdigest()
-        signature = self.identity.sign(entry_hash.encode("ascii"))
-        self.db.execute(
-            "INSERT INTO receipts(ts,nonce,policy_hash,action,target,value,decision,result,previous_hash,entry_hash,signature) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (request.timestamp, request.nonce, decision.policy_hash, request.action, request.target, request.value,
-             payload["decision"], result, previous, entry_hash, signature),
-        )
-        self.db.commit()
-        return entry_hash
+        with self.lock:
+            row = self.db.execute("SELECT entry_hash FROM receipts ORDER BY id DESC LIMIT 1").fetchone()
+            previous = row[0] if row else "0" * 64
+            payload = {
+                "ts": request.timestamp,
+                "nonce": request.nonce,
+                "policy_hash": decision.policy_hash,
+                "action": request.action,
+                "target": request.target,
+                "value": request.value,
+                "decision": "allowed" if decision.allowed else "denied",
+                "result": result,
+                "previous_hash": previous,
+            }
+            entry_hash = hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+            signature = self.identity.sign(entry_hash.encode("ascii"))
+            self.db.execute(
+                "INSERT INTO receipts(ts,nonce,policy_hash,action,target,value,decision,result,previous_hash,entry_hash,signature) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (request.timestamp, request.nonce, decision.policy_hash, request.action, request.target, request.value,
+                 payload["decision"], result, previous, entry_hash, signature),
+            )
+            self.db.commit()
+            return entry_hash
 
     def recent(self, limit: int = 20) -> list[dict]:
-        rows = self.db.execute(
-            "SELECT ts,action,target,value,decision,result,entry_hash FROM receipts ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT ts,action,target,value,decision,result,entry_hash FROM receipts ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
         return [dict(zip(("ts", "action", "target", "value", "decision", "result", "hash"), row)) for row in rows]
 
     def verify_chain(self) -> bool:
         previous = "0" * 64
-        rows = self.db.execute(
-            "SELECT ts,nonce,policy_hash,action,target,value,decision,result,previous_hash,entry_hash,signature FROM receipts ORDER BY id"
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT ts,nonce,policy_hash,action,target,value,decision,result,previous_hash,entry_hash,signature FROM receipts ORDER BY id"
+            ).fetchall()
         for row in rows:
             ts, nonce, policy_hash, action, target, value, decision, result, prev, entry_hash, signature = row
             if prev != previous:
@@ -165,7 +171,8 @@ class ReceiptStore:
         return True
 
     def close(self) -> None:
-        self.db.close()
+        with self.lock:
+            self.db.close()
 
 
 class PolicyEngine:
@@ -182,7 +189,6 @@ class PolicyEngine:
         ph = mandate.policy_hash
         deny = lambda code, reason: ActionDecision(False, code, reason, ph)
         allow = lambda: ActionDecision(True, "allowed", "action satisfies mandate", ph)
-
         if request.agent_id != mandate.agent_id:
             return deny("agent_mismatch", "agent identity is not authorized by mandate")
         if request.timestamp < mandate.valid_after or request.timestamp > mandate.valid_until:
