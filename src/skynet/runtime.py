@@ -7,6 +7,7 @@ from .adaptation import AdaptationPipeline
 from .agent import Agent
 from .audit import AuditLog
 from .autonomy import AutonomyRunner
+from .candidates import CandidateGenerator
 from .checkpoints import CheckpointStore
 from .config import Config
 from .delegation import CapabilityLeaseStore
@@ -15,12 +16,14 @@ from .evolution import EvalSuite, ModelTournament, ScoreStore, TrajectoryMiner
 from .governance import GovernedToolBus
 from .identity import LocalIdentityStore
 from .interop import AgentCard, AgentRegistry
+from .lab import AdaptiveLab
 from .mcp import MCPHub
 from .memory import MemoryStore
 from .permissions import PermissionGate
 from .planning import PlanStore
 from .policy import MandateStore, PolicyEngine, ReceiptStore
 from .redteam import RedTeamSuite
+from .resources import ResourceProfiler
 from .risk import RiskBudgetEngine
 from .routing import ModelRouter
 from .sandbox import CandidateSandbox
@@ -28,6 +31,7 @@ from .scheduler import RoutineStore
 from .semantic import SemanticMemory
 from .skills import SkillStore
 from .swarm import SwarmEngine
+from .telemetry import ModelTelemetryStore
 from .tools import ToolBus
 from .trajectories import TrajectoryStore
 from .vision import OllamaVisionClient
@@ -43,8 +47,12 @@ class Runtime:
     trajectory_miner: TrajectoryMiner
     adaptation: AdaptationPipeline
     sandbox: CandidateSandbox
+    lab: AdaptiveLab
+    candidate_generator: CandidateGenerator
     redteam: RedTeamSuite
     risk: RiskBudgetEngine
+    profiler: ResourceProfiler
+    telemetry: ModelTelemetryStore
     audit: AuditLog
     identity: LocalIdentityStore
     mandates: MandateStore
@@ -80,8 +88,11 @@ class Runtime:
         trajectory_miner = TrajectoryMiner(trajectories)
         adaptation = AdaptationPipeline(config.data_dir / "adaptation", trajectories)
         sandbox = CandidateSandbox(config.data_dir / "candidate-sandbox")
+        lab = AdaptiveLab(config.data_dir / "adaptive-lab", config.data_dir / "candidate-sandbox")
         redteam = RedTeamSuite(config.ollama_url)
         risk = RiskBudgetEngine(50)
+        profiler = ResourceProfiler()
+        telemetry = ModelTelemetryStore(config.data_dir / "model-telemetry.db")
         audit = AuditLog(config.data_dir / "audit.jsonl")
         identity = LocalIdentityStore(config.data_dir / "identity.key")
         receipts = ReceiptStore(config.data_dir / "receipts.db", identity)
@@ -94,10 +105,24 @@ class Runtime:
         skills = SkillStore(config.data_dir / "skills")
         plans = PlanStore(config.data_dir / "plans")
         permissions = PermissionGate()
-        router = ModelRouter(config.ollama_url, config.model, config.models)
+        router = ModelRouter(
+            config.ollama_url,
+            config.model,
+            config.models,
+            telemetry=telemetry,
+            profiler=profiler,
+            quality_lookup=scores.latest_for,
+        )
         deployed_model = deployments.get("reasoning-model")
         if deployed_model is not None:
             router.configure_deployment(deployed_model.active, deployed_model.status)
+        candidate_generator = CandidateGenerator(
+            config.ollama_url,
+            router.preferred_model or config.model,
+            trajectories,
+            trajectory_miner,
+            sandbox,
+        )
         tournament = ModelTournament(router, eval_suite, scores, max_workers=min(config.swarm_workers, 3))
         swarm = SwarmEngine(router, config.swarm_workers)
         agents = AgentRegistry(config.data_dir / "agents.json")
@@ -108,7 +133,8 @@ class Runtime:
                 "planning", "memory", "windows", "mcp", "swarm", "policy-enforcement",
                 "trajectory-learning", "objective-evaluation", "capability-delegation",
                 "canary-promotion", "rollback", "red-team-evaluation", "risk-budgeting",
-                "candidate-sandbox", "local-adaptation-prep",
+                "candidate-sandbox", "local-adaptation-prep", "adaptive-lab",
+                "resource-aware-routing", "trajectory-candidate-generation",
             ],
             protocols=["skynet-local", "mcp-client", "a2a-ready"],
             trust="owner-local",
@@ -134,18 +160,21 @@ class Runtime:
         return cls(
             config=config, memory=memory, semantic=semantic, trajectories=trajectories,
             trajectory_miner=trajectory_miner, adaptation=adaptation, sandbox=sandbox,
-            redteam=redteam, risk=risk, audit=audit, identity=identity, mandates=mandates,
-            receipts=receipts, policy=policy, leases=leases, deployments=deployments,
-            eval_suite=eval_suite, scores=scores, tournament=tournament, skills=skills,
-            plans=plans, permissions=permissions, router=router, swarm=swarm, agents=agents,
-            vision=vision, windows=windows, mcp=mcp, checkpoints=checkpoints, routines=routines,
-            raw_tools=raw_tools, tools=tools, agent=agent, autonomy=autonomy,
+            lab=lab, candidate_generator=candidate_generator, redteam=redteam, risk=risk,
+            profiler=profiler, telemetry=telemetry, audit=audit, identity=identity,
+            mandates=mandates, receipts=receipts, policy=policy, leases=leases,
+            deployments=deployments, eval_suite=eval_suite, scores=scores,
+            tournament=tournament, skills=skills, plans=plans, permissions=permissions,
+            router=router, swarm=swarm, agents=agents, vision=vision, windows=windows,
+            mcp=mcp, checkpoints=checkpoints, routines=routines, raw_tools=raw_tools,
+            tools=tools, agent=agent, autonomy=autonomy,
         )
 
     def close(self) -> None:
         self.mcp.close()
         self.routines.close()
         self.checkpoints.close()
+        self.telemetry.close()
         self.scores.close()
         self.receipts.close()
         self.trajectories.close()
