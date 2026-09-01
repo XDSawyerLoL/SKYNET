@@ -13,9 +13,9 @@ from .runtime import Runtime
 class ChannelBridge:
     """Opt-in loopback webhook bridge for external channel adapters.
 
-    It never starts automatically. A bearer token is required. Incoming remote
-    messages run with unattended confirmation behavior, so sensitive actions are
-    denied rather than remotely self-approved.
+    Bearer authentication is mandatory. A stable external event id can be sent
+    through ``X-SKYNET-Event-ID`` or JSON ``event_id``; retries are then
+    idempotent in ChannelHub. Sensitive actions remain denied in remote sessions.
     """
 
     def __init__(self, root: Path, host: str = "127.0.0.1", port: int = 8765) -> None:
@@ -29,7 +29,7 @@ class ChannelBridge:
     def _handler(self):
         bridge = self
         class Handler(BaseHTTPRequestHandler):
-            server_version = "SKYNETChannel/0.9"
+            server_version = "SKYNETChannel/0.10"
             def _json(self, code: int, payload: dict) -> None:
                 body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
                 self.send_response(code); self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -54,9 +54,17 @@ class ChannelBridge:
                     raw = self.rfile.read(length); data = json.loads(raw.decode("utf-8")) if raw else {}
                     content = str(data.get("content", ""))
                     session = parse_qs(parsed.query).get("session", [f"{parts[1]}:{parts[2]}"])[0]
-                    item = bridge.runtime.channels.receive(parts[1], parts[2], content, session)
+                    event_id = self.headers.get("X-SKYNET-Event-ID") or data.get("event_id")
+                    item = bridge.runtime.channels.receive(
+                        parts[1], parts[2], content, session,
+                        dedupe_key=None if event_id is None else str(event_id),
+                    )
                     bridge.runtime.sessions.ensure(session, title=f"{parts[1]} · {parts[2]}", channel=parts[1])
-                    self._json(202, {"message_id": item.message_id, "session_id": item.session_id})
+                    self._json(202, {
+                        "message_id": item.message_id,
+                        "session_id": item.session_id,
+                        "dedupe_key": item.dedupe_key,
+                    })
                 except Exception as exc:
                     self._json(400, {"error": f"{type(exc).__name__}: {exc}"})
             def log_message(self, format: str, *args) -> None: return
@@ -66,7 +74,7 @@ class ChannelBridge:
     def _message_json(item) -> dict:
         return {"message_id": item.message_id, "direction": item.direction, "channel": item.channel,
                 "peer": item.peer, "session_id": item.session_id, "content": item.content,
-                "status": item.status, "created_at": item.created_at}
+                "status": item.status, "created_at": item.created_at, "dedupe_key": item.dedupe_key}
 
     def _worker(self) -> None:
         while not self.stop_event.is_set():
@@ -86,7 +94,10 @@ class ChannelBridge:
                     )
                     if denied:
                         reply += "\n\n[SKYNET] A sensitive action was not executed because remote channel sessions cannot self-approve it."
-                    self.runtime.channels.send(item.channel, item.peer, reply, item.session_id)
+                    self.runtime.channels.send(
+                        item.channel, item.peer, reply, item.session_id,
+                        dedupe_key=f"reply:{item.message_id}",
+                    )
                     self.runtime.channels.mark(item.message_id, "processed")
                 except Exception as exc:
                     self.runtime.channels.mark(item.message_id, f"error:{type(exc).__name__}")
