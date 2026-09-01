@@ -7,32 +7,31 @@ import json
 import math
 import re
 import sqlite3
+import threading
 import time
 
 _TOKEN = re.compile(r"[\w'-]+", re.UNICODE)
 
 
 class SemanticMemory:
-    """Dependency-free semantic retrieval.
-
-    If an Ollama embedding model is configured it is used locally. Otherwise a
-    deterministic hashed lexical vector keeps the feature offline and usable.
-    """
+    """Dependency-free semantic retrieval with thread-safe local persistence."""
 
     def __init__(self, path: Path, ollama_url: str | None = None, embed_model: str | None = None) -> None:
-        self.db = sqlite3.connect(path)
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(path, check_same_thread=False, timeout=10)
         self.ollama_url = (ollama_url or "").rstrip("/")
         self.embed_model = embed_model
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS semantic_memory (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                source TEXT NOT NULL,
-                text TEXT NOT NULL,
-                vector TEXT NOT NULL
-            )
-        """)
-        self.db.commit()
+        with self.lock:
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS semantic_memory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    source TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    vector TEXT NOT NULL
+                )
+            """)
+            self.db.commit()
 
     @staticmethod
     def _hashed_vector(text: str, dims: int = 256) -> list[float]:
@@ -75,12 +74,13 @@ class SemanticMemory:
         if not clean:
             raise ValueError("semantic memory text cannot be empty")
         vector = self.vectorize(clean)
-        cur = self.db.execute(
-            "INSERT INTO semantic_memory(ts,source,text,vector) VALUES(?,?,?,?)",
-            (time.time(), source, clean, json.dumps(vector, separators=(",", ":"))),
-        )
-        self.db.commit()
-        return int(cur.lastrowid)
+        with self.lock:
+            cur = self.db.execute(
+                "INSERT INTO semantic_memory(ts,source,text,vector) VALUES(?,?,?,?)",
+                (time.time(), source, clean, json.dumps(vector, separators=(",", ":"))),
+            )
+            self.db.commit()
+            return int(cur.lastrowid)
 
     @staticmethod
     def _cosine(a: list[float], b: list[float]) -> float:
@@ -90,7 +90,8 @@ class SemanticMemory:
 
     def search(self, query: str, limit: int = 5) -> list[tuple[float, str, str]]:
         q = self.vectorize(query)
-        rows = self.db.execute("SELECT source,text,vector FROM semantic_memory ORDER BY id DESC LIMIT 2000").fetchall()
+        with self.lock:
+            rows = self.db.execute("SELECT source,text,vector FROM semantic_memory ORDER BY id DESC LIMIT 2000").fetchall()
         scored = []
         for source, text, raw in rows:
             vector = json.loads(raw)
@@ -99,4 +100,5 @@ class SemanticMemory:
         return scored[:max(1, min(limit, 20))]
 
     def close(self) -> None:
-        self.db.close()
+        with self.lock:
+            self.db.close()
