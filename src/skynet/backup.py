@@ -8,7 +8,8 @@ import hashlib
 import io
 import json
 import os
-import shutil
+import sqlite3
+import tempfile
 import time
 import zipfile
 
@@ -46,8 +47,37 @@ class BackupManager:
                 continue
             if rel.parts and rel.parts[0] == "backups":
                 continue
+            if path.name.endswith(("-journal", "-wal", "-shm")):
+                continue
             files.append(path)
         return files
+
+    def _read_consistent(self, path: Path) -> bytes:
+        if path.suffix.lower() != ".db":
+            return path.read_bytes()
+        snapshot: Path | None = None
+        source = None
+        dest = None
+        try:
+            fd, raw = tempfile.mkstemp(prefix="skynet-backup-", suffix=".db", dir=self.output_dir)
+            os.close(fd)
+            snapshot = Path(raw)
+            source = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=10)
+            dest = sqlite3.connect(snapshot, timeout=10)
+            source.backup(dest)
+            dest.commit()
+            dest.close(); dest = None
+            source.close(); source = None
+            return snapshot.read_bytes()
+        except sqlite3.DatabaseError:
+            return path.read_bytes()
+        finally:
+            if dest is not None:
+                dest.close()
+            if source is not None:
+                source.close()
+            if snapshot is not None:
+                snapshot.unlink(missing_ok=True)
 
     def _archive_bytes(self, include_identity: bool) -> tuple[bytes, int]:
         files = self._collect(include_identity)
@@ -56,7 +86,7 @@ class BackupManager:
         with zipfile.ZipFile(memory, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for path in files:
                 rel = path.relative_to(self.data_dir).as_posix()
-                body = path.read_bytes()
+                body = self._read_consistent(path)
                 manifest_files.append({"path": rel, "sha256": hashlib.sha256(body).hexdigest(), "size": len(body)})
                 zf.writestr(f"state/{rel}", body)
             manifest = {
@@ -143,22 +173,17 @@ class BackupManager:
         manifest = self._verify_archive(body)
         if not manifest.get("identity_included"):
             raise ValueError("protected archive does not contain full identity state")
-        temp = self.output_dir / ".restore-temp.zip"
-        temp.write_bytes(body)
-        try:
-            with zipfile.ZipFile(temp, "r") as zf:
-                restored = 0
-                for item in manifest.get("files", []):
-                    rel = Path(item["path"])
-                    if rel.is_absolute() or ".." in rel.parts:
-                        raise ValueError("unsafe backup path")
-                    target = (self.data_dir / rel).resolve()
-                    target.relative_to(self.data_dir)
-                    if target.exists() and not overwrite:
-                        continue
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(zf.read("state/" + item["path"]))
-                    restored += 1
-                return restored
-        finally:
-            temp.unlink(missing_ok=True)
+        restored = 0
+        with zipfile.ZipFile(io.BytesIO(body), "r") as zf:
+            for item in manifest.get("files", []):
+                rel = Path(item["path"])
+                if rel.is_absolute() or ".." in rel.parts:
+                    raise ValueError("unsafe backup path")
+                target = (self.data_dir / rel).resolve()
+                target.relative_to(self.data_dir)
+                if target.exists() and not overwrite:
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(zf.read("state/" + item["path"]))
+                restored += 1
+        return restored
