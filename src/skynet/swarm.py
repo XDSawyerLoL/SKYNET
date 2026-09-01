@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import json
 import sqlite3
+import threading
 import time
 import uuid
 
@@ -45,32 +46,36 @@ DEFAULT_ROLES = {
 class SwarmRunStore:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path, timeout=10)
-        self.db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS swarm_runs (
-                run_id TEXT PRIMARY KEY,
-                created_at REAL NOT NULL,
-                goal TEXT NOT NULL,
-                status TEXT NOT NULL,
-                payload TEXT NOT NULL
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(path, timeout=10, check_same_thread=False)
+        with self.lock:
+            self.db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS swarm_runs (
+                    run_id TEXT PRIMARY KEY,
+                    created_at REAL NOT NULL,
+                    goal TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
             )
-            """
-        )
-        self.db.commit()
+            self.db.commit()
 
     def save(self, run_id: str, goal: str, status: str, payload: dict) -> None:
-        self.db.execute(
-            "INSERT OR REPLACE INTO swarm_runs(run_id,created_at,goal,status,payload) VALUES(?,?,?,?,?)",
-            (run_id, time.time(), goal[:10_000], status, json.dumps(payload, ensure_ascii=False)),
-        )
-        self.db.commit()
+        with self.lock:
+            self.db.execute(
+                "INSERT OR REPLACE INTO swarm_runs(run_id,created_at,goal,status,payload) VALUES(?,?,?,?,?)",
+                (run_id, time.time(), goal[:10_000], status, json.dumps(payload, ensure_ascii=False)),
+            )
+            self.db.commit()
 
     def recent(self, limit: int = 30) -> list[dict]:
-        rows = self.db.execute(
-            "SELECT run_id,created_at,goal,status,payload FROM swarm_runs ORDER BY created_at DESC LIMIT ?",
-            (max(1, min(limit, 200)),),
-        ).fetchall()
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT run_id,created_at,goal,status,payload FROM swarm_runs ORDER BY created_at DESC LIMIT ?",
+                (max(1, min(limit, 200)),),
+            ).fetchall()
         output: list[dict] = []
         for run_id, created_at, goal, status, payload in rows:
             try:
@@ -81,7 +86,8 @@ class SwarmRunStore:
         return output
 
     def close(self) -> None:
-        self.db.close()
+        with self.lock:
+            self.db.close()
 
 
 class SwarmEngine:
@@ -158,7 +164,6 @@ class SwarmEngine:
         pending = {task.task_id: task for task in selected}
         results: dict[str, SpecialistResult] = {}
         started = time.time()
-
         while pending:
             ready = [task for task in pending.values() if all(dep in results for dep in task.depends_on)]
             if not ready:
@@ -175,7 +180,6 @@ class SwarmEngine:
                     except Exception as exc:
                         results[task.task_id] = SpecialistResult(task.role, "error", f"{type(exc).__name__}: {exc}", task.task_id, "error")
                     pending.pop(task.task_id, None)
-
         evidence = "\n\n".join(
             f"[{task_id} / {result.role} via {result.model} / {result.status}]\n{result.output}"
             for task_id, result in results.items()
