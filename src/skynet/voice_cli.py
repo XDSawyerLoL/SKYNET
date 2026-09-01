@@ -9,10 +9,10 @@ from .voice import VoiceEngine
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="skynet-voice", description="SKYNET local voice diagnostics")
+    parser = argparse.ArgumentParser(prog="skynet-voice", description="Diagnostic de la voix locale SKYNET")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("status", help="Show detected voice provider and audio devices")
-    test = sub.add_parser("test", help="Speak a deterministic French test sentence")
+    sub.add_parser("status", help="Afficher le moteur vocal et les périphériques audio détectés")
+    test = sub.add_parser("test", help="Prononcer une phrase de test en français")
     test.add_argument("--text", default="SKYNET en ligne. Tous les systèmes sont opérationnels.")
     return parser
 
@@ -27,15 +27,15 @@ def main() -> None:
         return
     if args.command == "test":
         status = engine.refresh()
-        print(f"Provider: {status.provider}")
-        print(f"Voice: {status.voice}")
-        print("Speaking test sentence...")
+        print(f"Moteur : {status.provider}")
+        print(f"Voix : {status.voice}")
+        print("Lecture de la phrase de test...")
         engine.speak_blocking(args.text)
         if engine.last_error:
-            raise SystemExit(f"VOICE ERROR: {engine.last_error}")
-        print("Voice test completed.")
+            raise SystemExit(f"ERREUR VOCALE : {engine.last_error}")
+        print("Test vocal terminé.")
         if states:
-            print("States: " + " -> ".join(states))
+            print("États : " + " -> ".join(states))
 
 
 if __name__ == "__main__":
