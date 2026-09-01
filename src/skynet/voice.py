@@ -63,15 +63,14 @@ def prepare_spoken_text(text: str, max_chars: int = 1800) -> str:
 
 
 class VoiceEngine:
-    """French local TTS with an isolated premium runtime.
+    """French local TTS with a strict female voice identity.
 
     Provider priority:
-      Chatterbox Multilingual V3 worker -> Kokoro 82M -> Windows SAPI.
+      Chatterbox Multilingual V3 worker + female reference -> Kokoro ff_siwis ->
+      French female Windows SAPI.
 
-    Chatterbox deliberately lives in `.skynet/voice/venv`. Its pinned numpy,
-    torch and transformers versions therefore cannot mutate SKYNET's core venv.
-    The worker remains alive after loading the model so subsequent utterances do
-    not pay model startup cost again.
+    A premium Chatterbox installation is never considered usable without the
+    validated female reference file. Male fallbacks are deliberately forbidden.
     """
 
     def __init__(self, data_dir: Path, on_state: Callable[[str], None] | None = None) -> None:
@@ -104,6 +103,12 @@ class VoiceEngine:
             return windows
         return self.voice_dir / "venv" / "bin" / "python"
 
+    def _female_reference_valid(self) -> bool:
+        try:
+            return self.reference_path.exists() and self.reference_path.stat().st_size >= 20_000
+        except OSError:
+            return False
+
     def _kokoro_available(self) -> bool:
         if not (self.model_path.exists() and self.voices_path.exists()):
             return False
@@ -118,7 +123,12 @@ class VoiceEngine:
 
     def _chatterbox_available(self) -> bool:
         python = self._premium_python()
-        return self.chatterbox_marker.exists() and python.exists() and self.worker_script.exists()
+        return (
+            self.chatterbox_marker.exists()
+            and python.exists()
+            and self.worker_script.exists()
+            and self._female_reference_valid()
+        )
 
     def _detect_provider(self) -> str:
         if self._chatterbox_available():
@@ -142,28 +152,27 @@ class VoiceEngine:
 
     def status(self) -> VoiceStatus:
         if self._provider == "chatterbox-local":
-            reference = "référence personnalisée" if self.reference_path.exists() else "voix intégrée"
-            detail = "Voix premium locale · français · moteur isolé et persistant"
+            detail = "Voix féminine premium locale · français · moteur isolé et persistant"
             if self._premium_process is not None and self._premium_process.poll() is None:
                 detail += " · modèle chaud"
-            return VoiceStatus("Chatterbox Multilingual V3", True, reference, detail, self._last_error)
+            return VoiceStatus("Chatterbox Multilingual V3", True, "voix féminine SKYNET", detail, self._last_error)
         if self._provider == "kokoro-local":
             return VoiceStatus(
                 "Kokoro 82M local",
                 True,
-                "ff_siwis",
-                "Voix neuronale locale · français · mode rapide",
+                "ff_siwis · féminine",
+                "Voix féminine neuronale locale · français · mode rapide",
                 self._last_error,
             )
         if self._powershell_ready():
             return VoiceStatus(
                 "Windows SAPI",
                 True,
-                "meilleure voix française disponible",
-                "Mode de secours hors ligne",
+                "voix française féminine uniquement",
+                "Secours hors ligne · aucune voix masculine autorisée",
                 self._last_error,
             )
-        return VoiceStatus("aucun", False, "", "Aucun moteur vocal local disponible", self._last_error)
+        return VoiceStatus("aucun", False, "", "Aucun moteur vocal féminin local disponible", self._last_error)
 
     def refresh(self) -> VoiceStatus:
         self._last_error = ""
@@ -188,6 +197,8 @@ class VoiceEngine:
             "voice": status.voice,
             "detail": status.detail,
             "last_error": self._last_error,
+            "female_only": True,
+            "female_reference_valid": self._female_reference_valid(),
             "kokoro_model_exists": self.model_path.exists(),
             "kokoro_voices_exists": self.voices_path.exists(),
             "chatterbox_enabled": self.chatterbox_marker.exists(),
@@ -308,6 +319,8 @@ class VoiceEngine:
                 raise RuntimeError("environnement vocal premium absent; relancez install-voice-premium.ps1")
             if not self.worker_script.exists():
                 raise RuntimeError("voice_worker.py est introuvable")
+            if not self._female_reference_valid():
+                raise RuntimeError("référence vocale féminine absente; relancez install-voice-premium.ps1")
 
             log_path = self.voice_dir / "chatterbox-worker.log"
             if self._premium_log_handle is not None:
@@ -350,6 +363,9 @@ class VoiceEngine:
         import sounddevice as sd
         import soundfile as sf
 
+        if not self._female_reference_valid():
+            raise RuntimeError("référence féminine SKYNET absente ou invalide")
+
         with self._premium_lock:
             process = self._ensure_premium_worker()
             if process.stdin is None or process.stdout is None:
@@ -363,7 +379,7 @@ class VoiceEngine:
                 "id": request_id,
                 "text": text,
                 "output": str(output.resolve()),
-                "reference": str(self.reference_path.resolve()) if self.reference_path.exists() else None,
+                "reference": str(self.reference_path.resolve()),
             }
             try:
                 process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -423,9 +439,7 @@ class VoiceEngine:
                 "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
                 "$voices = $s.GetInstalledVoices() | ForEach-Object {$_.VoiceInfo}; "
                 "$v = $voices | Where-Object {$_.Culture.Name -like 'fr-*' -and $_.Gender -eq 'Female'} | Select-Object -First 1; "
-                "if (-not $v) {$v = $voices | Where-Object {$_.Culture.Name -like 'fr-*'} | Select-Object -First 1}; "
-                "if (-not $v) {$v = $voices | Select-Object -First 1}; "
-                "if (-not $v) {throw 'Aucune voix Windows installée'}; "
+                "if (-not $v) {throw 'Aucune voix française féminine Windows installée; voix masculine interdite'}; "
                 "$s.SelectVoice($v.Name); $s.Rate = -1; $s.Volume = 100; "
                 f"$t = Get-Content -Raw -Encoding UTF8 '{path}'; $s.Speak($t)"
             )
