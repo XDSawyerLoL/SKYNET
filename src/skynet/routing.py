@@ -69,6 +69,19 @@ class ModelRouter:
         self._installed_cache_at = now
         return models
 
+    def warm(self) -> str:
+        """Load the preferred conversational model into Ollama memory."""
+        installed = self._installed_or_none()
+        if installed == []:
+            raise OllamaError(
+                "Ollama fonctionne mais aucun modèle local n'est installé. "
+                f"Installe le modèle par défaut avec : ollama pull {self.default_model}"
+            )
+        decision = self.decide("conversation", installed)
+        self.last_route = decision
+        self._client(decision.model).warm()
+        return decision.model
+
     @staticmethod
     def _last_user_text(messages: list[dict]) -> str:
         for message in reversed(messages):
@@ -245,7 +258,6 @@ class ModelRouter:
 
     def chat_stream(self, messages: list[dict], *, num_predict: int = 768) -> Iterator[str]:
         """Low-latency text-only route for ordinary conversation."""
-
         text = self._last_user_text(messages)
         installed = self._installed_or_none()
         if installed == []:
