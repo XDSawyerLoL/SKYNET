@@ -12,7 +12,7 @@ from .runtime import Runtime
 class DesktopApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("SKYNET V0.7 — Sovereign Local AI")
+        self.root.title("SKYNET V0.8 — Sovereign Local AI")
         self.root.geometry("1080x720")
         self.runtime = Runtime.create(Path.cwd(), session_id="desktop")
         self.events: queue.Queue[tuple[str, str]] = queue.Queue()
@@ -32,7 +32,7 @@ class DesktopApp:
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(1, weight=1)
 
-        title = ttk.Label(outer, text="SKYNET V0.7 — Adaptive Lab", font=("Segoe UI", 18, "bold"))
+        title = ttk.Label(outer, text="SKYNET V0.8 — Trust & Resilience", font=("Segoe UI", 18, "bold"))
         title.grid(row=0, column=0, sticky="w")
         self.status = ttk.Label(outer, text="")
         self.status.grid(row=0, column=1, sticky="e")
@@ -56,7 +56,7 @@ class DesktopApp:
         self.entry.bind("<Return>", lambda _event: self._send())
         ttk.Button(input_row, text="Envoyer", command=self._send).grid(row=0, column=1, padx=(8, 0))
 
-        side = ttk.LabelFrame(outer, text="Autonomie locale & évolution", padding=8)
+        side = ttk.LabelFrame(outer, text="Autonomie, évolution & confiance", padding=8)
         side.grid(row=1, column=1, sticky="nsew", pady=(10, 0))
         side.rowconfigure(1, weight=1)
         side.columnconfigure(0, weight=1)
@@ -81,10 +81,13 @@ class DesktopApp:
         ttk.Button(form, text="Ajouter la routine", command=self._add_routine).grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         ttk.Button(form, text="Exécuter les routines dues", command=self._run_due_manual).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         ttk.Button(form, text="État évolution", command=self._show_evolution).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        ttk.Separator(form, orient="horizontal").grid(row=6, column=0, columnspan=2, sticky="ew", pady=8)
+        ttk.Button(form, text="ARRÊT GLOBAL", command=self._emergency_stop).grid(row=7, column=0, columnspan=2, sticky="ew")
+        ttk.Button(form, text="Réarmer SKYNET", command=self._rearm).grid(row=8, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         self._append(
             "SYSTEM",
-            "SKYNET V0.7 démarré. Routage mesuré, laboratoire adaptatif, mandats, mémoire, routines et outils restent locaux par défaut.",
+            "SKYNET V0.8 démarré. Watchdog, kill-switch, validation signée et régressions historiques complètent le laboratoire adaptatif.",
         )
 
     def _append(self, who: str, text: str) -> None:
@@ -105,6 +108,20 @@ class DesktopApp:
         done.wait()
         return bool(result["value"])
 
+    def _emergency_stop(self) -> None:
+        if not messagebox.askyesno("Arrêt global SKYNET", "Bloquer immédiatement tous les appels d'outils et l'autonomie jusqu'à réarmement explicite ?"):
+            return
+        self.runtime.control.engage("desktop emergency stop")
+        self._append("CONTROL", "ARRÊT GLOBAL ENGAGÉ. Les appels d'outils sont bloqués sous le LLM.")
+        self._refresh_status()
+
+    def _rearm(self) -> None:
+        if not messagebox.askyesno("Réarmer SKYNET", "Retirer le kill-switch global ? Les permissions normales resteront actives."):
+            return
+        self.runtime.control.release()
+        self._append("CONTROL", "Kill-switch retiré explicitement. Les mandats et permissions normales restent applicables.")
+        self._refresh_status()
+
     def _show_evolution(self) -> None:
         deployed = self.runtime.deployments.get("reasoning-model")
         deployment = "baseline" if deployed is None else f"{deployed.active} [{deployed.status}]"
@@ -113,11 +130,14 @@ class DesktopApp:
         hardware = self.runtime.profiler.snapshot()
         lab = self.runtime.lab.choose()
         recent_telemetry = self.runtime.telemetry.recent(20)
+        reports = self.runtime.reports.recent(20)
         text = (
             f"Deployment: {deployment}\n"
             f"Scorecards: {len(scores)} recent\n"
             f"Learning proposals: {len(proposals)}\n"
             f"Telemetry samples: {len(recent_telemetry)} recent\n"
+            f"Validation reports: {len(reports)} recent\n"
+            f"Historical regressions: {len(self.runtime.regression.build(100))}\n"
             f"Lab backend: {lab.name} — {lab.reason}\n"
             f"RAM available: {hardware.ram_available_mb or '?'} MB\n"
             f"GPU: {hardware.gpu_name or 'not detected'}"
@@ -170,7 +190,9 @@ class DesktopApp:
             messagebox.showerror("Routine", str(exc))
 
     def _run_due_manual(self) -> None:
-        if self.autonomy_busy:
+        if self.autonomy_busy or self.runtime.control.engaged():
+            if self.runtime.control.engaged():
+                self._append("CONTROL", "Routine non lancée : arrêt global engagé.")
             return
         self._start_autonomy()
 
@@ -193,7 +215,7 @@ class DesktopApp:
         threading.Thread(target=work, daemon=True).start()
 
     def _autonomy_tick(self) -> None:
-        if not self.autonomy_busy and self.runtime.routines.due():
+        if not self.runtime.control.engaged() and not self.autonomy_busy and self.runtime.routines.due():
             self._start_autonomy()
         self.root.after(max(10, self.runtime.config.autonomy_poll_seconds) * 1000, self._autonomy_tick)
 
@@ -225,6 +247,9 @@ class DesktopApp:
         route = self.runtime.router.last_route.model
         deployed = self.runtime.deployments.get("reasoning-model")
         mode = deployed.status if deployed else "baseline"
+        if self.runtime.control.engaged():
+            self.status.configure(text=f"{route} • {mode} • STOP GLOBAL")
+            return
         flags = []
         if self.busy:
             flags.append("chat")
