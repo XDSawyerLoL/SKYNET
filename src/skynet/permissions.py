@@ -58,7 +58,11 @@ class PermissionGate:
             self.policy.update(policy)
 
     def level_for(self, tool_name: str) -> PermissionLevel:
-        return self.policy.get(tool_name, PermissionLevel.BLOCKED)
+        if tool_name in self.policy:
+            return self.policy[tool_name]
+        if tool_name.startswith("mcp__"):
+            return PermissionLevel.CONFIRM
+        return PermissionLevel.BLOCKED
 
     def authorize(
         self,
