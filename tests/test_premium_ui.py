@@ -9,7 +9,7 @@ from skynet.ui_premium import PALETTE
 
 class PremiumUITests(unittest.TestCase):
     def test_release_version(self) -> None:
-        self.assertEqual(skynet.__version__, "0.12.2")
+        self.assertEqual(skynet.__version__, "0.12.3")
 
     def test_navigation_surface_contains_core_product_sections(self) -> None:
         names = {key for key, _icon, _label in NAV_ITEMS}
