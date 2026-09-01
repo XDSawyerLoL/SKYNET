@@ -2,22 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .agent import Agent
-from .audit import AuditLog
-from .config import Config
-from .mcp import MCPHub
-from .memory import MemoryStore
-from .ollama import OllamaClient, OllamaError
-from .permissions import PermissionGate
-from .planning import PlanStore
-from .skills import SkillStore
-from .tools import ToolBus
-from .vision import OllamaVisionClient
-from .windows import WindowsController
+from .ollama import OllamaError
+from .runtime import Runtime
 
 
-BANNER = """\nSKYNET v0.2 — Sovereign Local AI
-Local model • Persistent memory • Windows control • MCP • Learned skills
+BANNER = """\nSKYNET v0.3 — Sovereign Local AI
+Local multi-model routing • Persistent memory • Windows control • MCP • Checkpointed autonomy
 Type :help for commands.
 """
 
@@ -29,47 +19,64 @@ def _confirm(message: str) -> bool:
     return answer in {"y", "yes", "o", "oui"}
 
 
-def _status(config: Config, client: OllamaClient, mcp: MCPHub) -> None:
-    print(f"Model:        {config.model}")
-    print(f"Vision:       {config.vision_model or '<disabled>'}")
-    print(f"Ollama:       {config.ollama_url}")
-    print(f"Workspace:    {config.workspace}")
-    print(f"Data:         {config.data_dir}")
-    print(f"MCP config:   {config.mcp_config}")
-    print("MCP servers:  " + (", ".join(mcp.list_servers()) if mcp.list_servers() else "<none>"))
+def _status(runtime: Runtime) -> None:
+    config = runtime.config
+    print(f"Default model: {config.model}")
+    print(f"Model pool:    {', '.join(config.models)}")
+    print(f"Last route:    {runtime.router.last_route.model} ({runtime.router.last_route.reason})")
+    print(f"Vision:        {config.vision_model or '<disabled>'}")
+    print(f"Ollama:        {config.ollama_url}")
+    print(f"Workspace:     {config.workspace}")
+    print(f"Data:          {config.data_dir}")
+    print(f"MCP config:    {config.mcp_config}")
+    print(f"Autonomy poll: {config.autonomy_poll_seconds}s")
+    servers = runtime.mcp.list_servers()
+    print("MCP servers:   " + (", ".join(servers) if servers else "<none>"))
     try:
-        models = client.list_models()
-        print("Installed:    " + (", ".join(models) if models else "<none>"))
+        models = runtime.router.list_models()
+        print("Installed:     " + (", ".join(models) if models else "<none>"))
     except OllamaError as exc:
         print(f"Ollama status: ERROR — {exc}")
 
 
-def main() -> None:
-    config = Config.load(Path.cwd())
-    memory = MemoryStore(config.data_dir / "memory.db")
-    audit = AuditLog(config.data_dir / "audit.jsonl")
-    skills = SkillStore(config.data_dir / "skills")
-    plans = PlanStore(config.data_dir / "plans")
-    permissions = PermissionGate()
-    client = OllamaClient(config.ollama_url, config.model)
-    vision = OllamaVisionClient(config.ollama_url, config.vision_model)
-    windows = WindowsController(config.workspace)
-    mcp = MCPHub(config.mcp_config)
-    tools = ToolBus(
-        config.workspace,
-        memory,
-        skills,
-        audit,
-        permissions,
-        plans=plans,
-        windows=windows,
-        mcp=mcp,
-        vision=vision,
-    )
-    agent = Agent(client, memory, skills, tools, config.max_tool_rounds)
+def _help() -> None:
+    print(":status                         Show runtime status")
+    print(":memory                         Show durable memories")
+    print(":skills                         Show approved skills")
+    print(":skill-candidates                Show learned skill candidates")
+    print(":skill-validate <name>           Validate a candidate")
+    print(":skill-promote <name>            Promote a validated candidate")
+    print(":routines                        Show local routines")
+    print(":routine-add                     Create an interval routine interactively")
+    print(":routine-run                     Run routines that are due now")
+    print(":checkpoints                     Show recent autonomy checkpoints")
+    print(":mcp                             Show configured MCP servers")
+    print(":windows                         List visible Windows apps")
+    print(":quit                            Exit SKYNET")
 
+
+def _add_routine(runtime: Runtime) -> None:
+    name = input("Routine name: ").strip()
+    prompt = input("Instruction: ").strip()
+    try:
+        minutes = int(input("Interval in minutes (>=1): ").strip())
+    except ValueError:
+        print("Invalid interval.")
+        return
+    if minutes < 1:
+        print("Invalid interval.")
+        return
+    if not _confirm(f"Create local routine '{name}' every {minutes} minutes?"):
+        print("Cancelled.")
+        return
+    item = runtime.routines.create(name, prompt, minutes * 60, start_in_seconds=minutes * 60)
+    print(runtime.routines.render(item))
+
+
+def main() -> None:
+    runtime = Runtime.create(Path.cwd(), session_id="cli")
     print(BANNER)
-    _status(config, client, mcp)
+    _status(runtime)
 
     try:
         while True:
@@ -83,43 +90,86 @@ def main() -> None:
             if text in {":quit", ":exit", "/quit", "/exit"}:
                 break
             if text == ":help":
-                print(":status   Show runtime status")
-                print(":memory   Show durable memories")
-                print(":skills   Show learned skills")
-                print(":mcp      Show configured MCP servers")
-                print(":windows  List visible Windows apps")
-                print(":quit     Exit SKYNET")
+                _help()
                 continue
             if text == ":status":
-                _status(config, client, mcp)
+                _status(runtime)
                 continue
             if text == ":memory":
-                items = memory.list_memories(50)
+                items = runtime.memory.list_memories(50)
                 print("\n".join(f"- {item}" for item in items) if items else "<no durable memories>")
                 continue
             if text == ":skills":
-                items = skills.list_skills()
-                print("\n".join(f"- {item}" for item in items) if items else "<no skills>")
+                items = runtime.skills.list_skills()
+                print("\n".join(f"- {item}" for item in items) if items else "<no approved skills>")
+                continue
+            if text == ":skill-candidates":
+                items = runtime.skills.list_candidates()
+                print("\n".join(f"- {item}" for item in items) if items else "<no skill candidates>")
+                continue
+            if text.startswith(":skill-validate "):
+                name = text.split(maxsplit=1)[1]
+                try:
+                    result = runtime.skills.validate_candidate(name)
+                    print("VALID" if result.valid else "INVALID")
+                    for error in result.errors:
+                        print(f"- {error}")
+                except Exception as exc:
+                    print(f"Skill error: {exc}")
+                continue
+            if text.startswith(":skill-promote "):
+                name = text.split(maxsplit=1)[1]
+                try:
+                    result = runtime.skills.validate_candidate(name)
+                    if not result.valid:
+                        print("Cannot promote: " + "; ".join(result.errors))
+                    elif _confirm(f"Promote validated skill '{name}' into the active skill library?"):
+                        print(runtime.skills.promote(name))
+                    else:
+                        print("Cancelled.")
+                except Exception as exc:
+                    print(f"Skill error: {exc}")
+                continue
+            if text == ":routines":
+                items = runtime.routines.list()
+                print("\n".join(runtime.routines.render(item) for item in items) if items else "<no routines>")
+                continue
+            if text == ":routine-add":
+                _add_routine(runtime)
+                continue
+            if text == ":routine-run":
+                results = runtime.autonomy.run_due()
+                if not results:
+                    print("<no due routines>")
+                for routine, status, reply in results:
+                    print(f"[{status}] {routine.name}\n{reply}")
+                continue
+            if text == ":checkpoints":
+                items = runtime.checkpoints.recent(20)
+                if not items:
+                    print("<no checkpoints>")
+                for item in items:
+                    print(f"{item.status} | {item.scope}:{item.scope_id} | {item.state}")
                 continue
             if text == ":mcp":
-                items = mcp.list_servers()
+                items = runtime.mcp.list_servers()
                 print("\n".join(f"- {item}" for item in items) if items else "<no MCP servers configured>")
                 continue
             if text == ":windows":
                 try:
-                    print(windows.list_windows())
+                    print(runtime.windows.list_windows())
                 except Exception as exc:
                     print(f"Windows error: {exc}")
                 continue
 
             try:
-                reply = agent.ask(text, _confirm)
+                reply = runtime.agent.ask(text, _confirm)
                 print(f"\nSKYNET > {reply}")
+                print(f"[model: {runtime.router.last_route.model} | {runtime.router.last_route.reason}]")
             except OllamaError as exc:
                 print(f"\nSKYNET ERROR > {exc}")
-                print("Check that Ollama is running and SKYNET_MODEL exists locally.")
+                print("Check that Ollama is running and at least the default SKYNET_MODEL exists locally.")
             except Exception as exc:
                 print(f"\nSKYNET ERROR > {type(exc).__name__}: {exc}")
     finally:
-        mcp.close()
-        memory.close()
+        runtime.close()
