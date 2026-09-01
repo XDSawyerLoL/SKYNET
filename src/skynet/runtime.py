@@ -7,6 +7,7 @@ from .adaptation import AdaptationPipeline
 from .agent import Agent
 from .audit import AuditLog
 from .autonomy import AutonomyRunner
+from .backup import BackupManager
 from .candidates import CandidateGenerator
 from .checkpoints import CheckpointStore
 from .config import Config
@@ -14,6 +15,7 @@ from .delegation import CapabilityLeaseStore
 from .deployment import DeploymentRegistry
 from .evolution import EvalSuite, ModelTournament, ScoreStore, TrajectoryMiner
 from .governance import GovernedToolBus
+from .health import GlobalControl, HeartbeatStore
 from .identity import LocalIdentityStore
 from .interop import AgentCard, AgentRegistry
 from .lab import AdaptiveLab
@@ -23,6 +25,7 @@ from .permissions import PermissionGate
 from .planning import PlanStore
 from .policy import MandateStore, PolicyEngine, ReceiptStore
 from .redteam import RedTeamSuite
+from .regression import FailureRegressionSuite
 from .resources import ResourceProfiler
 from .risk import RiskBudgetEngine
 from .routing import ModelRouter
@@ -34,6 +37,7 @@ from .swarm import SwarmEngine
 from .telemetry import ModelTelemetryStore
 from .tools import ToolBus
 from .trajectories import TrajectoryStore
+from .trust import ValidationReportStore
 from .vision import OllamaVisionClient
 from .windows import WindowsController
 
@@ -50,11 +54,16 @@ class Runtime:
     lab: AdaptiveLab
     candidate_generator: CandidateGenerator
     redteam: RedTeamSuite
+    regression: FailureRegressionSuite
     risk: RiskBudgetEngine
     profiler: ResourceProfiler
     telemetry: ModelTelemetryStore
     audit: AuditLog
     identity: LocalIdentityStore
+    reports: ValidationReportStore
+    backups: BackupManager
+    control: GlobalControl
+    heartbeats: HeartbeatStore
     mandates: MandateStore
     receipts: ReceiptStore
     policy: PolicyEngine
@@ -90,11 +99,16 @@ class Runtime:
         sandbox = CandidateSandbox(config.data_dir / "candidate-sandbox")
         lab = AdaptiveLab(config.data_dir / "adaptive-lab", config.data_dir / "candidate-sandbox")
         redteam = RedTeamSuite(config.ollama_url)
+        regression = FailureRegressionSuite(config.data_dir / "regression", trajectories, config.ollama_url)
         risk = RiskBudgetEngine(50)
         profiler = ResourceProfiler()
         telemetry = ModelTelemetryStore(config.data_dir / "model-telemetry.db")
         audit = AuditLog(config.data_dir / "audit.jsonl")
         identity = LocalIdentityStore(config.data_dir / "identity.key")
+        reports = ValidationReportStore(config.data_dir / "validation-reports", identity)
+        backups = BackupManager(config.data_dir, config.data_dir / "backups")
+        control = GlobalControl(config.data_dir / "kill-switch.json")
+        heartbeats = HeartbeatStore(config.data_dir / "heartbeats.json")
         receipts = ReceiptStore(config.data_dir / "receipts.db", identity)
         mandates = MandateStore(config.data_dir / "mandate.json", identity.identity.agent_id)
         policy = PolicyEngine(receipts)
@@ -135,6 +149,7 @@ class Runtime:
                 "canary-promotion", "rollback", "red-team-evaluation", "risk-budgeting",
                 "candidate-sandbox", "local-adaptation-prep", "adaptive-lab",
                 "resource-aware-routing", "trajectory-candidate-generation",
+                "signed-validation", "failure-regression", "global-kill-switch", "resilience-backup",
             ],
             protocols=["skynet-local", "mcp-client", "a2a-ready"],
             trust="owner-local",
@@ -150,7 +165,7 @@ class Runtime:
         )
         tools = GovernedToolBus(
             raw_tools, mandates, policy, receipts, identity.identity.agent_id,
-            semantic=semantic, swarm=swarm,
+            semantic=semantic, swarm=swarm, control=control,
         )
         agent = Agent(
             router, memory, skills, tools, config.max_tool_rounds,
@@ -160,8 +175,9 @@ class Runtime:
         return cls(
             config=config, memory=memory, semantic=semantic, trajectories=trajectories,
             trajectory_miner=trajectory_miner, adaptation=adaptation, sandbox=sandbox,
-            lab=lab, candidate_generator=candidate_generator, redteam=redteam, risk=risk,
-            profiler=profiler, telemetry=telemetry, audit=audit, identity=identity,
+            lab=lab, candidate_generator=candidate_generator, redteam=redteam, regression=regression,
+            risk=risk, profiler=profiler, telemetry=telemetry, audit=audit, identity=identity,
+            reports=reports, backups=backups, control=control, heartbeats=heartbeats,
             mandates=mandates, receipts=receipts, policy=policy, leases=leases,
             deployments=deployments, eval_suite=eval_suite, scores=scores,
             tournament=tournament, skills=skills, plans=plans, permissions=permissions,
