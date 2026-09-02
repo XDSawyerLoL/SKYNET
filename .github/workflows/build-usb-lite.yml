@@ -63,20 +63,21 @@ jobs:
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\llama.cpp-MIT.txt" "https://raw.githubusercontent.com/ggml-org/llama.cpp/$tag/LICENSE"
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\Qwen-Apache-2.0.txt" 'https://huggingface.co/Qwen/Qwen3-0.6B/raw/main/LICENSE'
 
-          @'
-SKYNET USB LITE — WINDOWS x64
-
-1. Décompressez ce ZIP directement sur votre clé USB.
-2. Ouvrez le dossier SKYNET-USB-Lite.
-3. Double-cliquez sur SKYNET-USB.exe.
-
-Aucune installation de Python ou Ollama n'est requise.
-Le modèle, le moteur CPU/Vulkan, la mémoire et le workspace sont déjà inclus.
-
-Cette édition Lite utilise Qwen3-0.6B Q4_K_M afin de rester transportable.
-Elle sert à tester l'interface, la mémoire, les outils et le fonctionnement autonome.
-La version 4B reste plus intelligente mais beaucoup plus volumineuse.
-'@ | Set-Content "$root\LISEZ-MOI.txt" -Encoding UTF8
+          $readme = @(
+            'SKYNET USB LITE - WINDOWS x64',
+            '',
+            '1. Decompressez ce ZIP directement sur votre cle USB.',
+            '2. Ouvrez le dossier SKYNET-USB-Lite.',
+            '3. Double-cliquez sur SKYNET-USB.exe.',
+            '',
+            'Aucune installation de Python ou Ollama n est requise.',
+            'Le modele, le moteur CPU/Vulkan, la memoire et le workspace sont deja inclus.',
+            '',
+            'Cette edition Lite utilise Qwen3-0.6B Q4_K_M afin de rester transportable.',
+            'Elle sert a tester l interface, la memoire, les outils et le fonctionnement autonome.',
+            'La version 4B reste plus intelligente mais beaucoup plus volumineuse.'
+          )
+          $readme | Set-Content "$root\LISEZ-MOI.txt" -Encoding UTF8
 
           $size = (Get-ChildItem $root -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Host "Package raw size MB: $([math]::Round($size / 1MB, 1))"
