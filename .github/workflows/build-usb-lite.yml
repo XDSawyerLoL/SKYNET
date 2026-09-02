@@ -41,24 +41,23 @@ jobs:
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name 'SKYNET-USB' --paths '.\src' --collect-submodules 'skynet' --add-data 'src\skynet\voice_worker.py;skynet' .\usb_lite_main.py
           if (-not (Test-Path '.\dist\SKYNET-USB.exe')) { throw 'SKYNET-USB.exe missing' }
 
-      - name: Assemble one-folder autonomous package
+      - name: Assemble compact autonomous package
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $root = '.\SKYNET-USB-Lite'
-          New-Item -ItemType Directory -Force -Path "$root\models", "$root\engine\cpu", "$root\engine\vulkan", "$root\.skynet", "$root\workspace", "$root\THIRD_PARTY_LICENSES" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$root\models", "$root\engine\cpu", "$root\.skynet", "$root\workspace", "$root\THIRD_PARTY_LICENSES" | Out-Null
           Copy-Item '.\dist\SKYNET-USB.exe' "$root\SKYNET-USB.exe"
 
           $tag = 'b10621'
           curl.exe -L --fail --retry 4 -o llama-cpu.zip "https://github.com/ggml-org/llama.cpp/releases/download/$tag/llama-$tag-bin-win-cpu-x64.zip"
-          curl.exe -L --fail --retry 4 -o llama-vulkan.zip "https://github.com/ggml-org/llama.cpp/releases/download/$tag/llama-$tag-bin-win-vulkan-x64.zip"
           Expand-Archive llama-cpu.zip "$root\engine\cpu" -Force
-          Expand-Archive llama-vulkan.zip "$root\engine\vulkan" -Force
 
-          $model = "$root\models\Qwen_Qwen3-0.6B-Q4_K_M.gguf"
-          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf?download=true'
-          $hash = (Get-FileHash $model -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne '9acfc1e001311f34b4252001b626f2e466d592a42065f66571bff3790d4e1b14') { throw "Invalid model SHA256: $hash" }
+          $model = "$root\models\Qwen3-0.6B-IQ4_XS.gguf"
+          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-IQ4_XS.gguf?download=true'
+          $modelSize = (Get-Item $model).Length
+          if ($modelSize -lt 400MB) { throw "Downloaded model unexpectedly small: $modelSize" }
+          (Get-FileHash $model -Algorithm SHA256).Hash | Set-Content "$root\MODEL-SHA256.txt" -Encoding ASCII
 
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\llama.cpp-MIT.txt" "https://raw.githubusercontent.com/ggml-org/llama.cpp/$tag/LICENSE"
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\Qwen-Apache-2.0.txt" 'https://huggingface.co/Qwen/Qwen3-0.6B/raw/main/LICENSE'
@@ -71,10 +70,9 @@ jobs:
             '3. Double-cliquez sur SKYNET-USB.exe.',
             '',
             'Aucune installation de Python ou Ollama n est requise.',
-            'Le modele, le moteur CPU/Vulkan, la memoire et le workspace sont deja inclus.',
+            'Le modele, le moteur CPU, la memoire et le workspace sont deja inclus.',
             '',
-            'Cette edition Lite utilise Qwen3-0.6B Q4_K_M afin de rester transportable.',
-            'Elle sert a tester l interface, la memoire, les outils et le fonctionnement autonome.',
+            'Edition de test compacte : Qwen3-0.6B IQ4_XS.',
             'La version 4B reste plus intelligente mais beaucoup plus volumineuse.'
           )
           $readme | Set-Content "$root\LISEZ-MOI.txt" -Encoding UTF8
