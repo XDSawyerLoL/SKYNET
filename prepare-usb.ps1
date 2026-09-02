@@ -28,15 +28,26 @@ New-Item -ItemType Directory -Force -Path $temp | Out-Null
 try {
     Write-Host 'SKYNET 0.14 - préparation de la clé USB autonome' -ForegroundColor Cyan
 
-    if (-not (Test-Path '.\dist\SKYNET-USB.exe')) {
+    $launcherSource = $null
+    if (Test-Path '.\SKYNET-USB.exe') {
+        $launcherSource = (Resolve-Path '.\SKYNET-USB.exe').Path
+    } elseif (Test-Path '.\dist\SKYNET-USB.exe') {
+        $launcherSource = (Resolve-Path '.\dist\SKYNET-USB.exe').Path
+    } elseif (Test-Path '.\build-usb-launcher.ps1') {
         powershell -ExecutionPolicy Bypass -File .\build-usb-launcher.ps1
+        $launcherSource = (Resolve-Path '.\dist\SKYNET-USB.exe').Path
+    } else {
+        throw 'SKYNET-USB.exe est introuvable. Retéléchargez le builder USB.'
     }
 
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
     foreach ($name in @('engine\cpu', 'engine\vulkan', 'models', '.skynet', 'workspace', 'THIRD_PARTY_LICENSES')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Destination $name) | Out-Null
     }
-    Copy-Item '.\dist\SKYNET-USB.exe' (Join-Path $Destination 'SKYNET-USB.exe') -Force
+    $launcherDestination = Join-Path $Destination 'SKYNET-USB.exe'
+    if ([System.IO.Path]::GetFullPath($launcherSource) -ne [System.IO.Path]::GetFullPath($launcherDestination)) {
+        Copy-Item $launcherSource $launcherDestination -Force
+    }
 
     $cpuZip = Join-Path $temp 'llama-cpu.zip'
     $vulkanZip = Join-Path $temp 'llama-vulkan.zip'
