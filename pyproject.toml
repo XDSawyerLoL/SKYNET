@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skynet-local-ai"
-version = "0.13.0"
-description = "Sovereign local-first personal AI with conversation-first French desktop UX, streaming fast chat, governed agent escalation, female premium voice, persistent memory, tools, automation and resilience"
+version = "0.13.1"
+description = "Sovereign local-first personal AI with conversation-first French desktop UX, streaming fast chat, governed agent escalation, female premium voice, persistent memory, tools, automation and portable Windows packaging"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "SKYNET Project"}]
@@ -13,9 +13,15 @@ dependencies = [
     "PySide6>=6.8,<7",
 ]
 
+[project.optional-dependencies]
+portable = [
+    "pyinstaller>=6.11,<7",
+]
+
 [project.scripts]
 skynet = "skynet.cli:main"
 skynet-desktop = "skynet.desktop_chat_launch:main"
+skynet-portable = "skynet.portable_entry:main"
 skynet-desktop-command = "skynet.desktop_qt:main"
 skynet-desktop-hud = "skynet.desktop_premium:main"
 skynet-desktop-classic = "skynet.desktop:main"
