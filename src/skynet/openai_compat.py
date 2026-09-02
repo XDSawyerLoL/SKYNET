@@ -48,25 +48,23 @@ class OpenAICompatibleClient:
         think: bool | None = None,
         num_predict: int | None = None,
     ) -> dict:
-        payload: dict = {
-            "model": self.model,
-            "messages": messages,
-            "stream": False,
-        }
+        payload: dict = {"model": self.model, "messages": messages, "stream": False}
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
         if num_predict is not None:
-            payload["max_tokens"] = max(32, int(num_predict))
+            payload["max_tokens"] = max(1, int(num_predict))
         response = self._json("POST", "/chat/completions", payload)
         choices = response.get("choices") or []
         if not choices:
             raise OpenAICompatError(f"Réponse inattendue du moteur local: {response}")
         message = dict(choices[0].get("message") or {})
-        # Normalize OpenAI tool-call shape to what Agent already understands.
         if message.get("tool_calls") is None:
             message.pop("tool_calls", None)
         return message
+
+    def warm(self) -> None:
+        self.chat([{"role": "user", "content": "Réponds uniquement OK."}], tools=None, num_predict=2)
 
     def chat_stream(
         self,
