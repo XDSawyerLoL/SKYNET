@@ -54,10 +54,10 @@ jobs:
           Expand-Archive llama-cpu.zip "$root\engine\cpu" -Force
 
           $model = "$root\models\SmolLM2-360M-Instruct-Q3_K_M.gguf"
-          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/tensorblock/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q3_K_M.gguf?download=true'
-          $modelSize = (Get-Item $model).Length
-          if ($modelSize -lt 200MB -or $modelSize -gt 280MB) { throw "Downloaded model has unexpected size: $modelSize" }
-          (Get-FileHash $model -Algorithm SHA256).Hash | Set-Content "$root\MODEL-SHA256.txt" -Encoding ASCII
+          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/unsloth/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q3_K_M.gguf?download=true'
+          $hash = (Get-FileHash $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne 'eb31394ff392eaca725fd9582eade3352adce2143704273846f0d194123fccf3') { throw "Invalid model SHA256: $hash" }
+          $hash | Set-Content "$root\MODEL-SHA256.txt" -Encoding ASCII
 
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\llama.cpp-MIT.txt" "https://raw.githubusercontent.com/ggml-org/llama.cpp/$tag/LICENSE"
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\SmolLM2-Apache-2.0.txt" 'https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/raw/main/LICENSE'
