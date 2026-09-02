@@ -8,7 +8,7 @@ from .usb_proxy import USBProxy
 from . import usb_entry as base
 
 
-LITE_MODEL_FILE = "Qwen3-0.6B-IQ4_XS.gguf"
+LITE_MODEL_FILE = "Qwen_Qwen3-0.6B-IQ4_XS.gguf"
 LITE_MODEL_ID = "qwen3:0.6b-usb-lite"
 
 
