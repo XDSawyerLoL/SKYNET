@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skynet-local-ai"
-version = "0.13.1"
-description = "Sovereign local-first personal AI with conversation-first French desktop UX, streaming fast chat, governed agent escalation, female premium voice, persistent memory, tools, automation and portable Windows packaging"
+version = "0.14.0"
+description = "Sovereign local-first personal AI with conversation-first French desktop UX, autonomous Windows USB inference, streaming fast chat, governed agent escalation, female voice, persistent memory, tools and resilience"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "SKYNET Project"}]
@@ -22,6 +22,7 @@ portable = [
 skynet = "skynet.cli:main"
 skynet-desktop = "skynet.desktop_chat_launch:main"
 skynet-portable = "skynet.portable_entry:main"
+skynet-usb = "skynet.usb_entry:main"
 skynet-desktop-command = "skynet.desktop_qt:main"
 skynet-desktop-hud = "skynet.desktop_premium:main"
 skynet-desktop-classic = "skynet.desktop:main"
