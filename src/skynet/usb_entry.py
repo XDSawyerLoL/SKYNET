@@ -55,7 +55,6 @@ def configure_usb_environment(root: Path, proxy_port: int) -> None:
     os.environ["SKYNET_MODEL"] = USB_MODEL
     os.environ["SKYNET_MODELS"] = USB_MODEL
     os.environ["SKYNET_OLLAMA_URL"] = f"http://127.0.0.1:{proxy_port}"
-    # USB profile intentionally uses dependency-free hashed semantic memory.
     os.environ["SKYNET_EMBED_MODEL"] = ""
     os.environ["SKYNET_VISION_MODEL"] = ""
 
@@ -92,10 +91,7 @@ class BundledLlama:
             "--alias", USB_MODEL,
             "--jinja",
         ]
-        if mode == "vulkan":
-            args += ["--n-gpu-layers", "99"]
-        else:
-            args += ["--n-gpu-layers", "0"]
+        args += ["--n-gpu-layers", "99" if mode == "vulkan" else "0"]
 
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_handle = self.log_path.open("a", encoding="utf-8", errors="replace")
@@ -127,11 +123,11 @@ class BundledLlama:
             time.sleep(0.35)
         return False
 
-    def start(self, vulkan_dir: Path, cpu_dir: Path, progress=None) -> tuple[str, int]:
-        attempts: list[tuple[str, Path | None, float]] = [
-            ("vulkan", find_llama_server(vulkan_dir), 90.0),
-            ("cpu", find_llama_server(cpu_dir), 150.0),
-        ]
+    def start(self, vulkan_dir: Path, cpu_dir: Path, progress=None, *, allow_vulkan: bool = True) -> tuple[str, int]:
+        attempts: list[tuple[str, Path | None, float]] = []
+        if allow_vulkan:
+            attempts.append(("vulkan", find_llama_server(vulkan_dir), 90.0))
+        attempts.append(("cpu", find_llama_server(cpu_dir), 150.0))
         missing: list[str] = []
         for mode, executable, timeout_s in attempts:
             if executable is None:
@@ -250,7 +246,6 @@ def main() -> None:
         proxy.start()
         configure_usb_environment(root, proxy_port)
 
-        # Verify the compatibility bridge before constructing the full runtime.
         deadline = time.monotonic() + 8.0
         while time.monotonic() < deadline and not _http_ready(f"http://127.0.0.1:{proxy_port}/api/tags"):
             app.processEvents()
