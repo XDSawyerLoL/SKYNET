@@ -8,8 +8,8 @@ from .usb_proxy import USBProxy
 from . import usb_entry as base
 
 
-MICRO_MODEL_FILE = "SmolLM2-360M-Instruct-Q3_K_M.gguf"
-MICRO_MODEL_ID = "smollm2:360m-usb-micro"
+MICRO_MODEL_FILE = "SmolLM2-135M-Instruct-Q4_K_M.gguf"
+MICRO_MODEL_ID = "smollm2:135m-usb-micro"
 
 
 def _layout(root: Path) -> dict[str, Path]:
@@ -102,7 +102,7 @@ def main() -> None:
         submit_filter = ComposerSubmitFilter(window)
         window.entry.installEventFilter(submit_filter)
         window._composer_submit_filter = submit_filter
-        window.local_status.setText("● USB autonome Micro · CPU · SmolLM2 360M")
+        window.local_status.setText("● USB autonome Micro · CPU · SmolLM2 135M")
         splash.close()
         window.showMaximized()
         app.exec()
