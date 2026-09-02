@@ -11,8 +11,10 @@ USB_MODEL = "qwen3:4b-usb"
 
 
 def tags_payload(model: str = USB_MODEL) -> dict:
-    family = "qwen3" if "qwen3" in model.lower() else ("smollm2" if "smollm2" in model.lower() else "local")
-    return {"models": [{"name": model, "model": model, "details": {"family": family, "quantization_level": "portable"}}]}
+    lower = model.lower()
+    family = "qwen3" if "qwen3" in lower else ("smollm2" if "smollm2" in lower else "local")
+    quant = "Q4_K_M" if "qwen3" in lower else "portable"
+    return {"models": [{"name": model, "model": model, "details": {"family": family, "quantization_level": quant}}]}
 
 
 def _without_thinking(messages: list[dict]) -> list[dict]:
