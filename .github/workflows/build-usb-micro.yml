@@ -60,7 +60,7 @@ jobs:
           $hash | Set-Content "$root\MODEL-SHA256.txt" -Encoding ASCII
 
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\llama.cpp-MIT.txt" "https://raw.githubusercontent.com/ggml-org/llama.cpp/$tag/LICENSE"
-          curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\SmolLM2-Apache-2.0.txt" 'https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/raw/main/LICENSE'
+          curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\SmolLM2-Apache-2.0.txt" 'https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/cbcad7f4d160a10174f725b968ab6faf2a76399e/LICENSE?download=true'
 
           $readme = @(
             'SKYNET USB MICRO - WINDOWS x64',
