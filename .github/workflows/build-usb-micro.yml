@@ -53,10 +53,10 @@ jobs:
           curl.exe -L --fail --retry 4 -o llama-cpu.zip "https://github.com/ggml-org/llama.cpp/releases/download/$tag/llama-$tag-bin-win-cpu-x64.zip"
           Expand-Archive llama-cpu.zip "$root\engine\cpu" -Force
 
-          $model = "$root\models\SmolLM2-360M-Instruct-Q3_K_M.gguf"
-          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/unsloth/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q3_K_M.gguf?download=true'
+          $model = "$root\models\SmolLM2-135M-Instruct-Q4_K_M.gguf"
+          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf?download=true'
           $hash = (Get-FileHash $model -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne 'eb31394ff392eaca725fd9582eade3352adce2143704273846f0d194123fccf3') { throw "Invalid model SHA256: $hash" }
+          if ($hash -ne 'ed5fa30c487b282ec156c29062f1222e5c20875a944ac98289dbd242e947f747') { throw "Invalid model SHA256: $hash" }
           $hash | Set-Content "$root\MODEL-SHA256.txt" -Encoding ASCII
 
           curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\llama.cpp-MIT.txt" "https://raw.githubusercontent.com/ggml-org/llama.cpp/$tag/LICENSE"
@@ -72,14 +72,15 @@ jobs:
             'Aucune installation de Python ou Ollama n est requise.',
             'Le modele, llama.cpp CPU, la memoire et le workspace sont inclus.',
             '',
-            'Edition Micro de test : SmolLM2-360M-Instruct Q3_K_M.',
-            'Elle est volontairement moins intelligente que la version Qwen 4B.',
-            'Son but est de tester facilement le produit complet sur un autre PC.'
+            'Edition Micro de validation materielle : SmolLM2-135M-Instruct Q4_K_M.',
+            'Le mini-modele sert a valider le lancement et l interface sur un autre PC.',
+            'La version Qwen 4B reste la cible pour la qualite des reponses.'
           )
           $readme | Set-Content "$root\LISEZ-MOI.txt" -Encoding UTF8
 
           $size = (Get-ChildItem $root -Recurse -File | Measure-Object Length -Sum).Sum
           Write-Host "Package raw size MB: $([math]::Round($size / 1MB, 1))"
+          if ($size -gt 220MB) { throw "Package unexpectedly large: $size" }
 
       - name: Upload single downloadable package
         uses: actions/upload-artifact@v4
