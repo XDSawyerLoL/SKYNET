@@ -53,8 +53,8 @@ jobs:
           curl.exe -L --fail --retry 4 -o llama-cpu.zip "https://github.com/ggml-org/llama.cpp/releases/download/$tag/llama-$tag-bin-win-cpu-x64.zip"
           Expand-Archive llama-cpu.zip "$root\engine\cpu" -Force
 
-          $model = "$root\models\Qwen3-0.6B-IQ4_XS.gguf"
-          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-IQ4_XS.gguf?download=true'
+          $model = "$root\models\Qwen_Qwen3-0.6B-IQ4_XS.gguf"
+          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-IQ4_XS.gguf?download=true'
           $modelSize = (Get-Item $model).Length
           if ($modelSize -lt 400MB) { throw "Downloaded model unexpectedly small: $modelSize" }
           (Get-FileHash $model -Algorithm SHA256).Hash | Set-Content "$root\MODEL-SHA256.txt" -Encoding ASCII
