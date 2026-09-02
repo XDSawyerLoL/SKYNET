@@ -1,0 +1,91 @@
+name: usb-micro-windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/skynet/usb_micro_entry.py'
+      - 'src/skynet/usb_entry.py'
+      - 'src/skynet/usb_proxy.py'
+      - 'usb_micro_main.py'
+      - '.github/workflows/build-usb-micro.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[portable]'
+
+      - name: Unit tests
+        shell: pwsh
+        run: python -m unittest discover -s tests -v
+
+      - name: Build SKYNET USB Micro executable
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name 'SKYNET-USB' --paths '.\src' --collect-submodules 'skynet' --add-data 'src\skynet\voice_worker.py;skynet' .\usb_micro_main.py
+          if (-not (Test-Path '.\dist\SKYNET-USB.exe')) { throw 'SKYNET-USB.exe missing' }
+
+      - name: Assemble compact autonomous package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = '.\SKYNET-USB-Micro'
+          New-Item -ItemType Directory -Force -Path "$root\models", "$root\engine\cpu", "$root\.skynet", "$root\workspace", "$root\THIRD_PARTY_LICENSES" | Out-Null
+          Copy-Item '.\dist\SKYNET-USB.exe' "$root\SKYNET-USB.exe"
+
+          $tag = 'b10621'
+          curl.exe -L --fail --retry 4 -o llama-cpu.zip "https://github.com/ggml-org/llama.cpp/releases/download/$tag/llama-$tag-bin-win-cpu-x64.zip"
+          Expand-Archive llama-cpu.zip "$root\engine\cpu" -Force
+
+          $model = "$root\models\SmolLM2-360M-Instruct-Q3_K_M.gguf"
+          curl.exe -L --fail --retry 4 -o $model 'https://huggingface.co/tensorblock/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q3_K_M.gguf?download=true'
+          $modelSize = (Get-Item $model).Length
+          if ($modelSize -lt 200MB -or $modelSize -gt 280MB) { throw "Downloaded model has unexpected size: $modelSize" }
+          (Get-FileHash $model -Algorithm SHA256).Hash | Set-Content "$root\MODEL-SHA256.txt" -Encoding ASCII
+
+          curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\llama.cpp-MIT.txt" "https://raw.githubusercontent.com/ggml-org/llama.cpp/$tag/LICENSE"
+          curl.exe -L --fail --retry 4 -o "$root\THIRD_PARTY_LICENSES\SmolLM2-Apache-2.0.txt" 'https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/raw/main/LICENSE'
+
+          $readme = @(
+            'SKYNET USB MICRO - WINDOWS x64',
+            '',
+            '1. Decompressez ce ZIP directement sur votre cle USB.',
+            '2. Ouvrez le dossier SKYNET-USB-Micro.',
+            '3. Double-cliquez sur SKYNET-USB.exe.',
+            '',
+            'Aucune installation de Python ou Ollama n est requise.',
+            'Le modele, llama.cpp CPU, la memoire et le workspace sont inclus.',
+            '',
+            'Edition Micro de test : SmolLM2-360M-Instruct Q3_K_M.',
+            'Elle est volontairement moins intelligente que la version Qwen 4B.',
+            'Son but est de tester facilement le produit complet sur un autre PC.'
+          )
+          $readme | Set-Content "$root\LISEZ-MOI.txt" -Encoding UTF8
+
+          $size = (Get-ChildItem $root -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Host "Package raw size MB: $([math]::Round($size / 1MB, 1))"
+
+      - name: Upload single downloadable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SKYNET-USB-Micro-One-Download
+          path: SKYNET-USB-Micro/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
