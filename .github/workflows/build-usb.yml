@@ -1,0 +1,77 @@
+name: usb-windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/skynet/usb_*.py'
+      - 'src/skynet/openai_compat.py'
+      - 'usb_main.py'
+      - 'build-usb-launcher.ps1'
+      - 'prepare-usb.ps1'
+      - 'PREPARER-SKYNET-USB.cmd'
+      - 'tests/test_usb_portable.py'
+      - 'pyproject.toml'
+      - '.github/workflows/build-usb.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[portable]'
+
+      - name: Unit tests
+        shell: pwsh
+        run: python -m unittest discover -s tests -v
+
+      - name: Build autonomous USB launcher
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File .\build-usb-launcher.ps1
+
+      - name: Validate launcher
+        shell: pwsh
+        run: |
+          if (-not (Test-Path '.\dist\SKYNET-USB.exe')) { throw 'SKYNET-USB.exe missing' }
+          $file = Get-Item '.\dist\SKYNET-USB.exe'
+          if ($file.Length -lt 10MB) { throw "USB launcher unexpectedly small: $($file.Length) bytes" }
+          Write-Host "Size MB: $([math]::Round($file.Length / 1MB, 1))"
+          Get-FileHash $file.FullName -Algorithm SHA256
+
+      - name: Package USB builder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path '.\usb-builder' | Out-Null
+          Copy-Item '.\dist\SKYNET-USB.exe' '.\usb-builder\SKYNET-USB.exe'
+          Copy-Item '.\prepare-usb.ps1' '.\usb-builder\prepare-usb.ps1'
+          Copy-Item '.\PREPARER-SKYNET-USB.cmd' '.\usb-builder\PREPARER-SKYNET-USB.cmd'
+
+      - name: Upload USB launcher
+        uses: actions/upload-artifact@v4
+        with:
+          name: SKYNET-USB-Launcher-Windows-x64
+          path: dist/SKYNET-USB.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload USB builder
+        uses: actions/upload-artifact@v4
+        with:
+          name: SKYNET-USB-Builder-Windows-x64
+          path: usb-builder/
+          if-no-files-found: error
+          retention-days: 14
