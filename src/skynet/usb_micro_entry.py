@@ -78,8 +78,9 @@ def main() -> None:
     engine = base.BundledLlama(root, layout["model"], layout["logs"] / "llama-server.log")
     proxy: USBProxy | None = None
     try:
-        # CPU-only package: pass the same CPU folder for both attempts so no Vulkan files are required.
-        mode, engine_port = engine.start(layout["cpu"], layout["cpu"], progress=progress)
+        mode, engine_port = engine.start(
+            layout["vulkan"], layout["cpu"], progress=progress, allow_vulkan=False
+        )
         progress("Connexion du noyau SKYNET au modèle local…")
         proxy_port = base.find_free_port()
         proxy = USBProxy("127.0.0.1", proxy_port, f"http://127.0.0.1:{engine_port}", MICRO_MODEL_ID)
