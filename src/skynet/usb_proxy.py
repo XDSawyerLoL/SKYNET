@@ -11,7 +11,8 @@ USB_MODEL = "qwen3:4b-usb"
 
 
 def tags_payload(model: str = USB_MODEL) -> dict:
-    return {"models": [{"name": model, "model": model, "details": {"family": "qwen3", "quantization_level": "Q4_K_M"}}]}
+    family = "qwen3" if "qwen3" in model.lower() else ("smollm2" if "smollm2" in model.lower() else "local")
+    return {"models": [{"name": model, "model": model, "details": {"family": family, "quantization_level": "portable"}}]}
 
 
 def _without_thinking(messages: list[dict]) -> list[dict]:
@@ -28,9 +29,12 @@ def _without_thinking(messages: list[dict]) -> list[dict]:
 
 def openai_payload_from_ollama(payload: dict, model: str = USB_MODEL) -> dict:
     options = payload.get("options") or {}
+    messages = list(payload.get("messages") or [])
+    if "qwen3" in model.lower():
+        messages = _without_thinking(messages)
     result: dict = {
         "model": model,
-        "messages": _without_thinking(list(payload.get("messages") or [])),
+        "messages": messages,
         "stream": bool(payload.get("stream", False)),
         "temperature": 0.7,
         "top_p": 0.8,
@@ -109,8 +113,6 @@ class USBProxy:
                 try:
                     payload = self._read_json()
                     if self.path.rstrip("/") == "/api/generate":
-                        # llama.cpp loads the model at server startup, so Ollama's
-                        # keep-alive warm-up request can complete immediately.
                         self._json(200, {"model": owner.model, "response": "", "done": True})
                         return
                     if self.path.rstrip("/") != "/api/chat":
