@@ -8,7 +8,7 @@ from .usb_proxy import USBProxy
 from . import usb_entry as base
 
 
-LITE_MODEL_FILE = "Qwen_Qwen3-0.6B-Q4_K_M.gguf"
+LITE_MODEL_FILE = "Qwen3-0.6B-IQ4_XS.gguf"
 LITE_MODEL_ID = "qwen3:0.6b-usb-lite"
 
 
@@ -31,7 +31,6 @@ def main() -> None:
     for key in ("data", "workspace", "logs"):
         layout[key].mkdir(parents=True, exist_ok=True)
 
-    # Reuse the mature USB runtime while giving the Lite build its own model identity.
     base.USB_MODEL = LITE_MODEL_ID
 
     from PySide6.QtCore import Qt
@@ -47,8 +46,8 @@ def main() -> None:
     missing: list[str] = []
     if not layout["model"].exists():
         missing.append(str(layout["model"]))
-    if base.find_llama_server(layout["vulkan"]) is None and base.find_llama_server(layout["cpu"]) is None:
-        missing.append(str(root / "engine" / "..." / "llama-server.exe"))
+    if base.find_llama_server(layout["cpu"]) is None:
+        missing.append(str(root / "engine" / "cpu" / "llama-server.exe"))
     if missing:
         QMessageBox.critical(None, "SKYNET USB Lite", "Package incomplet :\n\n" + "\n".join(missing))
         return
@@ -101,9 +100,7 @@ def main() -> None:
         submit_filter = ComposerSubmitFilter(window)
         window.entry.installEventFilter(submit_filter)
         window._composer_submit_filter = submit_filter
-        window.local_status.setText(
-            "● USB autonome Lite · " + ("Vulkan" if mode == "vulkan" else "CPU") + " · Qwen3 0.6B"
-        )
+        window.local_status.setText("● USB autonome Lite · CPU · Qwen3 0.6B")
         splash.close()
         window.showMaximized()
         app.exec()
